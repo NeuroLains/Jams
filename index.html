@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f5d86">
+<title>Ocean Homestead</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; touch-action:none; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0c2740; font-family:'Segoe UI',Roboto,system-ui,sans-serif; }
+  #game { position:fixed; inset:0; display:block; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  /* ---------- HUD ---------- */
+  .hud { position:absolute; pointer-events:none; z-index:10; }
+  .pill {
+    pointer-events:auto; display:flex; align-items:center; gap:6px;
+    background:linear-gradient(160deg,rgba(28,64,98,.94),rgba(18,46,72,.94));
+    border:1px solid rgba(120,190,240,.35); border-radius:16px;
+    padding:6px 12px; color:#eaf6ff; font-weight:700; font-size:15px;
+    box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+    backdrop-filter:blur(4px);
+  }
+  .pill .ic { font-size:17px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+  #topLeft { top:calc(env(safe-area-inset-top,0) + 10px); left:10px; display:flex; flex-direction:column; gap:8px; }
+  #topRight { top:calc(env(safe-area-inset-top,0) + 10px); right:10px; display:flex; gap:8px; }
+  .iconBtn {
+    pointer-events:auto; width:42px; height:42px; border-radius:13px;
+    background:linear-gradient(160deg,rgba(28,64,98,.94),rgba(18,46,72,.94));
+    border:1px solid rgba(120,190,240,.35); color:#eaf6ff; font-size:20px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);
+    transition:transform .12s ease, filter .12s ease;
+  }
+  .iconBtn:active { transform:scale(.9); filter:brightness(1.25); }
+
+  /* top center level bar */
+  #levelBar { top:calc(env(safe-area-inset-top,0) + 12px); left:50%; transform:translateX(-50%); }
+  .levelWrap { pointer-events:auto; display:flex; flex-direction:column; align-items:center; gap:4px;
+    background:linear-gradient(160deg,rgba(28,64,98,.94),rgba(18,46,72,.94));
+    border:1px solid rgba(120,190,240,.35); border-radius:16px; padding:6px 16px;
+    box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12); }
+  .levelWrap .lt { color:#eaf6ff; font-size:13px; font-weight:700; display:flex; gap:6px; align-items:center; }
+  .xpTrack { width:150px; height:10px; background:rgba(0,0,0,.35); border-radius:6px; overflow:hidden; border:1px solid rgba(255,255,255,.1); }
+  .xpFill { height:100%; width:0%; background:linear-gradient(90deg,#ffd34d,#ff9d2e); border-radius:6px; transition:width .4s ease; }
+  .xpFill::after { content:''; }
+
+  /* ---------- bottom bar ---------- */
+  #bottomBar { position:absolute; bottom:calc(env(safe-area-inset-bottom,0) + 8px); left:0; right:0; z-index:10;
+    display:flex; justify-content:center; gap:10px; padding:0 8px; pointer-events:none; }
+  .tabBtn { pointer-events:auto; flex:1; max-width:170px; height:50px; border-radius:16px;
+    background:linear-gradient(160deg,rgba(30,70,108,.96),rgba(18,46,72,.96));
+    border:1px solid rgba(120,190,240,.35); color:#eaf6ff; font-weight:800; font-size:14px;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    box-shadow:0 5px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.12);
+    transition:transform .12s, filter .12s; }
+  .tabBtn:active { transform:translateY(2px) scale(.97); filter:brightness(1.2); }
+  .tabBtn .ic { font-size:18px; }
+  .tabBtn.active { background:linear-gradient(160deg,#3b86c4,#2a6aa0); border-color:#bfe4ff; }
+
+  /* ---------- modal panels ---------- */
+  .panel { position:absolute; z-index:30; left:50%; bottom:calc(env(safe-area-inset-bottom,0) + 66px);
+    transform:translate(-50%,40px); width:min(94vw,440px);
+    background:linear-gradient(165deg,rgba(26,58,90,.98),rgba(16,40,64,.98));
+    border:1px solid rgba(120,190,240,.4); border-radius:20px; padding:14px;
+    box-shadow:0 12px 40px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.1);
+    opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s cubic-bezier(.2,.9,.3,1.2);
+    color:#eaf6ff; }
+  .panel.open { opacity:1; pointer-events:auto; transform:translate(-50%,0); }
+  .panel h2 { font-size:15px; letter-spacing:1px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+  .panel h2 .x { width:30px; height:30px; border-radius:9px; background:rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .panel h2 .x:active { filter:brightness(1.4); }
+
+  .tabRow { display:flex; gap:8px; margin-bottom:10px; }
+  .segBtn { flex:1; padding:8px; border-radius:12px; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.08);
+    color:#cfe6f7; font-weight:700; font-size:13px; text-align:center; }
+  .segBtn.active { background:linear-gradient(160deg,#3b86c4,#2a6aa0); color:#fff; border-color:#bfe4ff; }
+
+  /* grids */
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; max-height:46vh; overflow-y:auto; padding:2px; }
+  .cell { aspect-ratio:1/1; border-radius:14px; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; position:relative; overflow:hidden; }
+  .cell:active { filter:brightness(1.3); }
+  .cell.selected { border-color:#ffd34d; box-shadow:0 0 0 2px rgba(255,211,77,.5) inset; }
+  .cell .cnv { width:64%; height:64%; }
+  .cell .nm { font-size:9.5px; color:#dfeefc; text-align:center; line-height:1.05; padding:0 2px; }
+  .cell .cnt { position:absolute; top:3px; right:5px; font-size:11px; font-weight:800; color:#ffd34d; text-shadow:0 1px 2px #000; }
+  .cell .rar { position:absolute; top:0; left:0; width:100%; height:4px; }
+  .empty { grid-column:1/-1; text-align:center; padding:24px 0; color:#8fb3cf; font-size:13px; }
+
+  /* build catalog rows */
+  .buildRow { display:flex; flex-direction:column; gap:8px; max-height:46vh; overflow-y:auto; }
+  .bItem { display:flex; align-items:center; gap:12px; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; padding:10px; }
+  .bItem .cnv { width:48px; height:48px; flex:none; }
+  .bItem .info { flex:1; }
+  .bItem .info b { font-size:14px; }
+  .bItem .info small { display:block; color:#9cc3df; font-size:11px; }
+  .costBtn { padding:8px 14px; border-radius:12px; font-weight:800; font-size:13px; display:flex; align-items:center; gap:5px;
+    background:linear-gradient(160deg,#caa45a,#9c7a36); color:#fff; border:1px solid rgba(255,255,255,.2); }
+  .costBtn.disabled { filter:grayscale(.7) brightness(.7); }
+  .costBtn:active { filter:brightness(1.25); }
+
+  /* settings */
+  .setRow { display:flex; align-items:center; justify-content:space-between; padding:12px 4px; border-bottom:1px solid rgba(255,255,255,.07); font-size:14px; }
+  .sw { width:52px; height:30px; border-radius:16px; background:rgba(0,0,0,.4); position:relative; transition:background .2s; flex:none; }
+  .sw.on { background:#3ea96b; }
+  .sw .kn { position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .sw.on .kn { left:25px; }
+  .dangerBtn { width:100%; margin-top:12px; padding:12px; border-radius:12px; background:linear-gradient(160deg,#c0473f,#8e302a); color:#fff; font-weight:800; }
+
+  /* ---------- catch minigame ---------- */
+  #catch { position:absolute; z-index:40; top:14%; left:50%; transform:translate(-50%,-20px) scale(.9);
+    width:min(90vw,400px);
+    background:linear-gradient(165deg,rgba(26,58,90,.98),rgba(16,40,64,.98));
+    border:1px solid rgba(120,190,240,.45); border-radius:20px; padding:16px;
+    box-shadow:0 14px 44px rgba(0,0,0,.6); color:#eaf6ff; text-align:center;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s cubic-bezier(.2,.9,.3,1.3); }
+  #catch.open { opacity:1; pointer-events:auto; transform:translate(-50%,0) scale(1); }
+  #catch .ttl { font-size:14px; letter-spacing:2px; color:#bfe4ff; margin-bottom:6px; }
+  #catch .iname { font-size:18px; font-weight:800; margin-bottom:12px; }
+  .barTrack { position:relative; height:34px; border-radius:18px; overflow:hidden; border:2px solid rgba(0,0,0,.3);
+    background:linear-gradient(90deg,#c0473f,#caa45a 30%,#3ea96b 42%,#3ea96b 58%,#caa45a 70%,#c0473f); }
+  .barPerfect { position:absolute; top:0; height:100%; background:repeating-linear-gradient(45deg,rgba(255,255,255,.35),rgba(255,255,255,.35) 4px,transparent 4px,transparent 8px); }
+  .needle { position:absolute; top:-4px; width:5px; height:42px; background:#fff; border-radius:3px; box-shadow:0 0 8px rgba(255,255,255,.9); transform:translateX(-50%); }
+  #catchBtn { margin-top:14px; width:100%; padding:14px; border-radius:14px; font-size:18px; font-weight:900; letter-spacing:1px;
+    background:linear-gradient(160deg,#ffd34d,#ff9d2e); color:#5a3300; border:1px solid rgba(255,255,255,.3); box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  #catchBtn:active { transform:scale(.96); filter:brightness(1.1); }
+  #catchResult { margin-top:10px; font-size:20px; font-weight:900; height:24px; }
+
+  /* build action bar (when placing) */
+  #buildActions { position:absolute; z-index:35; bottom:calc(env(safe-area-inset-bottom,0) + 66px); left:50%; transform:translate(-50%,30px);
+    display:flex; gap:8px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+  #buildActions.open { opacity:1; pointer-events:auto; transform:translate(-50%,0); }
+  .baBtn { padding:11px 16px; border-radius:14px; font-weight:800; font-size:14px; color:#fff; display:flex; align-items:center; gap:6px;
+    box-shadow:0 5px 16px rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.18); }
+  .baBtn.ok { background:linear-gradient(160deg,#3ea96b,#2c7d4e); }
+  .baBtn.rot { background:linear-gradient(160deg,#3b86c4,#2a6aa0); }
+  .baBtn.no { background:linear-gradient(160deg,#c0473f,#8e302a); }
+  .baBtn:active { filter:brightness(1.2); transform:scale(.95); }
+
+  /* toast */
+  #toast { position:absolute; z-index:60; top:18%; left:50%; transform:translate(-50%,-10px); display:flex; flex-direction:column; gap:6px; align-items:center; pointer-events:none; }
+  .toast { background:rgba(10,30,48,.92); border:1px solid rgba(120,190,240,.4); color:#eaf6ff; padding:8px 16px; border-radius:20px;
+    font-weight:700; font-size:14px; opacity:0; transform:translateY(-8px); animation:toastIn 2.2s ease forwards; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  @keyframes toastIn { 0%{opacity:0;transform:translateY(-8px);} 12%{opacity:1;transform:translateY(0);} 80%{opacity:1;} 100%{opacity:0;transform:translateY(-6px);} }
+
+  /* floating gain text drawn over canvas */
+  #fx { position:absolute; inset:0; z-index:9; pointer-events:none; overflow:hidden; }
+  .gain { position:absolute; font-weight:900; font-size:18px; color:#ffe07a; text-shadow:0 2px 4px rgba(0,0,0,.6);
+    animation:gainUp 1.1s ease-out forwards; }
+  @keyframes gainUp { 0%{opacity:0;transform:translateY(0) scale(.6);} 15%{opacity:1;transform:translateY(-6px) scale(1.1);} 100%{opacity:0;transform:translateY(-46px) scale(1);} }
+
+  /* hint for tapping floating items */
+  #hint { position:absolute; bottom:calc(env(safe-area-inset-bottom,0) + 66px); left:50%; transform:translateX(-50%); z-index:8;
+    color:#dceffd; font-size:13px; font-weight:700; background:rgba(10,30,48,.6); padding:6px 14px; border-radius:14px; pointer-events:none;
+    opacity:0; transition:opacity .3s; text-shadow:0 1px 2px rgba(0,0,0,.5); }
+  #hint.show { opacity:1; }
+
+  .scrim { position:absolute; inset:0; z-index:25; background:rgba(2,12,22,.35); opacity:0; pointer-events:none; transition:opacity .25s; }
+  .scrim.show { opacity:1; pointer-events:auto; }
+
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.18); border-radius:3px; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="cv"></canvas>
+  <div id="fx"></div>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- HUD -->
+  <div class="hud" id="topLeft">
+    <div class="pill"><span class="ic">🪵</span><span id="hudWood">0</span></div>
+    <div class="pill"><span class="ic">⭐</span><span id="hudBeauty">0</span></div>
+    <div class="pill"><span class="ic">🧱</span><span id="hudSize">0</span></div>
+  </div>
+
+  <div class="hud" id="levelBar">
+    <div class="levelWrap">
+      <div class="lt"><span>🏝️</span><span>Плот · Уровень <b id="hudLevel">1</b></span></div>
+      <div class="xpTrack"><div class="xpFill" id="xpFill"></div></div>
+    </div>
+  </div>
+
+  <div class="hud" id="topRight">
+    <div class="iconBtn" id="btnSettings">⚙️</div>
+  </div>
+
+  <!-- bottom tabs -->
+  <div id="bottomBar">
+    <div class="tabBtn" data-panel="inventory"><span class="ic">🎒</span>Инвентарь</div>
+    <div class="tabBtn" data-panel="build"><span class="ic">🔨</span>Строить</div>
+  </div>
+
+  <div id="hint">Нажми на проплывающий предмет, чтобы поймать!</div>
+
+  <!-- INVENTORY PANEL -->
+  <div class="panel" id="panel-inventory">
+    <h2>ИНВЕНТАРЬ <span class="x" data-close>✕</span></h2>
+    <div class="tabRow">
+      <div class="segBtn active" data-filter="all">Все</div>
+      <div class="segBtn" data-filter="common">Обычные</div>
+      <div class="segBtn" data-filter="rare">Редкие</div>
+      <div class="segBtn" data-filter="legendary">Легенд.</div>
+    </div>
+    <div class="grid" id="invGrid"></div>
+    <div style="font-size:11px;color:#9cc3df;margin-top:8px;text-align:center">Нажми предмет → размести на плоту. Долгое нажатие → переработать в 🪵</div>
+  </div>
+
+  <!-- BUILD PANEL -->
+  <div class="panel" id="panel-build">
+    <h2>СТРОИТЕЛЬСТВО <span class="x" data-close>✕</span></h2>
+    <div class="tabRow">
+      <div class="segBtn active" data-build="floor">Плот</div>
+      <div class="segBtn" data-build="wall">Стены</div>
+      <div class="segBtn" data-build="edit">Правка</div>
+    </div>
+    <div class="buildRow" id="buildList"></div>
+  </div>
+
+  <!-- SETTINGS PANEL -->
+  <div class="panel" id="panel-settings">
+    <h2>НАСТРОЙКИ <span class="x" data-close>✕</span></h2>
+    <div class="setRow"><span>🔊 Звуки</span><div class="sw on" id="swSound"><div class="kn"></div></div></div>
+    <div class="setRow"><span>🌊 Качество воды</span><div class="sw on" id="swWater"><div class="kn"></div></div></div>
+    <div class="setRow"><span>💾 Автосохранение</span><div class="sw on" id="swAuto"><div class="kn"></div></div></div>
+    <div class="setRow"><span>📊 Показывать FPS</span><div class="sw" id="swFps"><div class="kn"></div></div></div>
+    <button class="dangerBtn" id="btnReset">Сбросить прогресс</button>
+    <div style="font-size:11px;color:#9cc3df;margin-top:10px;text-align:center">Ocean Homestead · v1.0 · Cozy raft builder</div>
+  </div>
+
+  <!-- CATCH MINIGAME -->
+  <div id="catch">
+    <div class="ttl">ЛОВЛЯ ПРЕДМЕТА</div>
+    <div class="iname" id="catchName">Стул</div>
+    <div class="barTrack"><div class="barPerfect" id="barPerfect"></div><div class="needle" id="needle"></div></div>
+    <div id="catchResult"></div>
+    <button id="catchBtn">НАЖМИ!</button>
+  </div>
+
+  <!-- BUILD ACTION BAR -->
+  <div id="buildActions">
+    <div class="baBtn rot" id="baRotate">⟳ Поворот</div>
+    <div class="baBtn ok" id="baConfirm">✓ Поставить</div>
+    <div class="baBtn no" id="baCancel">✕ Отмена</div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   Ocean Homestead — single-file cozy raft builder
+   Architecture: Game, Renderer, Ocean, Player, Raft, Inventory,
+   BuildingSystem, MiniGame, UI, SaveSystem, ItemManager
+   ========================================================================= */
+
+/* ---------- math helpers ---------- */
+const TAU = Math.PI * 2;
+const lerp = (a,b,t) => a + (b-a)*t;
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const rand = (a,b) => a + Math.random()*(b-a);
+const randi = (a,b) => Math.floor(rand(a,b+1));
+const choice = arr => arr[(Math.random()*arr.length)|0];
+const ease = t => t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+
+/* ---------- color palette per rarity ---------- */
+const RARITY = {
+  common:    { name:'Обычный',     col:'#9fb6c7', glow:'#cfe0ec' },
+  rare:      { name:'Редкий',      col:'#5aa6ff', glow:'#a8d2ff' },
+  legendary: { name:'Легендарный', col:'#ffb43d', glow:'#ffe09a' }
+};
+
+/* =========================================================================
+   ItemManager — definitions + procedural icon drawing
+   ========================================================================= */
+class ItemManager {
+  constructor(){
+    // key, name, rarity, beauty, woodValue, size [w,h] in cells, height(px), draw type
+    this.defs = {
+      chair:    { name:'Стул',       rarity:'common', beauty:6,  wood:5,  size:[1,1], h:26, type:'chair' },
+      table:    { name:'Стол',       rarity:'common', beauty:8,  wood:8,  size:[1,1], h:20, type:'table' },
+      lamp:     { name:'Лампа',      rarity:'common', beauty:7,  wood:4,  size:[1,1], h:34, type:'lamp', light:true },
+      plant:    { name:'Растение',   rarity:'common', beauty:9,  wood:3,  size:[1,1], h:30, type:'plant' },
+      painting: { name:'Картина',    rarity:'common', beauty:10, wood:4,  size:[1,1], h:28, type:'painting' },
+      cabinet:  { name:'Шкаф',       rarity:'common', beauty:11, wood:12, size:[1,1], h:40, type:'cabinet' },
+      sofa:     { name:'Диван',      rarity:'common', beauty:13, wood:14, size:[2,1], h:24, type:'sofa' },
+      bed:      { name:'Кровать',    rarity:'common', beauty:14, wood:16, size:[2,1], h:22, type:'bed' },
+
+      piano:    { name:'Пианино',     rarity:'rare', beauty:34, wood:30, size:[2,1], h:36, type:'piano' },
+      statue:   { name:'Статуя',      rarity:'rare', beauty:30, wood:24, size:[1,1], h:46, type:'statue' },
+      chest:    { name:'Сундук',      rarity:'rare', beauty:26, wood:22, size:[1,1], h:24, type:'chest' },
+      goldchair:{ name:'Золотое кресло',rarity:'rare', beauty:38, wood:28, size:[1,1], h:34, type:'goldchair' },
+      clock:    { name:'Старинные часы',rarity:'rare', beauty:32, wood:26, size:[1,1], h:48, type:'clock' },
+
+      fountain: { name:'Фонтан',          rarity:'legendary', beauty:80, wood:60, size:[2,2], h:38, type:'fountain' },
+      wheel:    { name:'Капитанский штурвал',rarity:'legendary', beauty:72, wood:55, size:[1,1], h:44, type:'wheel' },
+      bigstatue:{ name:'Большая статуя',  rarity:'legendary', beauty:95, wood:70, size:[2,2], h:60, type:'bigstatue' },
+      exotree:  { name:'Экзотическое дерево',rarity:'legendary', beauty:88, wood:50, size:[2,2], h:72, type:'exotree' },
+    };
+    this.keys = Object.keys(this.defs);
+    this.byRarity = { common:[], rare:[], legendary:[] };
+    for(const k of this.keys) this.byRarity[this.defs[k].rarity].push(k);
+  }
+  get(k){ return this.defs[k]; }
+  rollKey(level){
+    // higher level/beauty => better odds
+    let rareChance = clamp(0.10 + level*0.025, 0.10, 0.42);
+    let legChance  = clamp(0.01 + level*0.012, 0.01, 0.18);
+    const r = Math.random();
+    let pool;
+    if(r < legChance) pool = this.byRarity.legendary;
+    else if(r < legChance + rareChance) pool = this.byRarity.rare;
+    else pool = this.byRarity.common;
+    return choice(pool);
+  }
+
+  /* draw an item to an arbitrary 2d context at (0,0..s) box — used for icons & world.
+     ctx already translated; s = pixel scale (footprint width). rot 0..3 */
+  drawIcon(ctx, key, s){
+    ctx.save();
+    ctx.translate(s/2, s*0.62);
+    this._draw(ctx, this.defs[key], s*0.8, 0, 1);
+    ctx.restore();
+  }
+}
+
+/* =========================================================================
+   Procedural item rendering (shared by icons and world)
+   Drawn in pseudo-iso: a footprint diamond + extruded body.
+   origin at base-center, +scale roughly = cell size
+   ========================================================================= */
+ItemManager.prototype._draw = function(ctx, def, sc, rot, alpha){
+  ctx.globalAlpha = alpha;
+  const t = def.type;
+  // shadow
+  ctx.save();
+  ctx.globalAlpha = alpha*0.25; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(0, 4, sc*0.42, sc*0.2, 0, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = alpha;
+
+  const box = (cx,cy,w,d,hgt,top,left,right) => {
+    // iso box: w along x-iso, d along y-iso, hgt up
+    const hw=w/2, hd=d/2;
+    const P=(x,y,z)=>[cx+(x-y)*0.5, cy+(x+y)*0.25 - z];
+    const a=P(-hw,-hd,0),b=P(hw,-hd,0),c=P(hw,hd,0),d2=P(-hw,hd,0);
+    const A=P(-hw,-hd,hgt),B=P(hw,-hd,hgt),C=P(hw,hd,hgt),D=P(-hw,hd,hgt);
+    // left face
+    ctx.fillStyle=left; ctx.beginPath(); ctx.moveTo(...d2);ctx.lineTo(...c);ctx.lineTo(...C);ctx.lineTo(...D);ctx.closePath();ctx.fill();
+    // right face
+    ctx.fillStyle=right; ctx.beginPath(); ctx.moveTo(...b);ctx.lineTo(...c);ctx.lineTo(...C);ctx.lineTo(...B);ctx.closePath();ctx.fill();
+    // top
+    ctx.fillStyle=top; ctx.beginPath(); ctx.moveTo(...A);ctx.lineTo(...B);ctx.lineTo(...C);ctx.lineTo(...D);ctx.closePath();ctx.fill();
+    return {A,B,C,D};
+  };
+  const wood = ['#a9743f','#8a5b2e','#6f4622'];
+  const woodLight=['#c79255','#a9743f','#855a2c'];
+
+  switch(t){
+    case 'chair': {
+      box(0,0, sc*0.4, sc*0.4, sc*0.22, '#caa15f','#a9743f','#8a5b2e');
+      box(0,-sc*0.12, sc*0.42, sc*0.08, sc*0.4, '#b07a3a','#8f6230','#724d24');
+      break; }
+    case 'table': {
+      box(0,0, sc*0.62, sc*0.5, sc*0.06, '#c79255','#a9743f','#855a2c');
+      // legs
+      box(0,0, sc*0.5, sc*0.4, sc*0.18, '#7a5128','#7a5128','#5e3f20');
+      break; }
+    case 'lamp': {
+      box(0,0, sc*0.16, sc*0.16, sc*0.5, '#7a5128','#6a4624','#543819');
+      ctx.fillStyle='#ffe9a8'; ctx.beginPath();
+      ctx.moveTo(0,-sc*0.5-2); ctx.lineTo(sc*0.2,-sc*0.34); ctx.lineTo(-sc*0.2,-sc*0.34); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(255,225,140,.5)'; ctx.beginPath(); ctx.ellipse(0,-sc*0.34,sc*0.28,sc*0.12,0,0,TAU); ctx.fill();
+      break; }
+    case 'plant': {
+      box(0,0, sc*0.26, sc*0.26, sc*0.18, '#c0703a','#9c592c','#7e4622');
+      ctx.fillStyle='#3f9b53';
+      for(let i=0;i<5;i++){ const a=i/5*TAU; ctx.beginPath();
+        ctx.ellipse(Math.cos(a)*sc*0.12,-sc*0.32+Math.sin(a)*sc*0.04, sc*0.13,sc*0.2, a, 0,TAU); ctx.fill(); }
+      ctx.fillStyle='#54c06a'; ctx.beginPath(); ctx.ellipse(0,-sc*0.4,sc*0.16,sc*0.22,0,0,TAU); ctx.fill();
+      break; }
+    case 'painting': {
+      box(0,0, sc*0.5, sc*0.1, sc*0.44, '#caa15f','#a9743f','#8a5b2e');
+      ctx.fillStyle='#2a6fa0'; ctx.fillRect(-sc*0.18,-sc*0.4,sc*0.36,sc*0.28);
+      ctx.fillStyle='#7fd0ff'; ctx.fillRect(-sc*0.14,-sc*0.22,sc*0.28,sc*0.06);
+      ctx.fillStyle='#ffd34d'; ctx.beginPath(); ctx.arc(sc*0.08,-sc*0.32,sc*0.05,0,TAU); ctx.fill();
+      break; }
+    case 'cabinet': {
+      box(0,0, sc*0.42, sc*0.34, sc*0.62, '#a9743f','#8a5b2e','#6f4622');
+      ctx.fillStyle='#5e3f20'; break; }
+    case 'sofa': {
+      box(0,0, sc*0.9, sc*0.42, sc*0.18, '#4f9bd6','#3b7fb6','#2f6794');
+      box(0,-sc*0.16, sc*0.9, sc*0.1, sc*0.34, '#5aa9e6','#458fc6','#367298');
+      box(-sc*0.42,0, sc*0.1, sc*0.42, sc*0.3,'#5aa9e6','#458fc6','#367298');
+      box(sc*0.42,0, sc*0.1, sc*0.42, sc*0.3,'#5aa9e6','#458fc6','#367298');
+      break; }
+    case 'bed': {
+      box(0,0, sc*0.9, sc*0.5, sc*0.18, '#a9743f','#8a5b2e','#6f4622');
+      box(0,sc*0.04, sc*0.84, sc*0.44, sc*0.24, '#eef3f8','#d7e2ec','#c2d0dd');
+      box(-sc*0.38,0, sc*0.84*0.0+sc*0.16, sc*0.44, sc*0.3,'#7fb0e0','#6a9bcc','#557fa8');
+      break; }
+    case 'piano': {
+      box(0,0, sc*0.9, sc*0.5, sc*0.4, '#2a2a30','#1c1c22','#121216');
+      ctx.fillStyle='#f4f4f4'; box(0,-sc*0.18, sc*0.7, sc*0.12, sc*0.04,'#f4f4f4','#dcdcdc','#cfcfcf');
+      break; }
+    case 'statue': {
+      box(0,0, sc*0.34, sc*0.34, sc*0.14, '#cfcabf','#b8b3a8','#9c978d');
+      box(0,0, sc*0.2, sc*0.2, sc*0.6, '#e7e2d8','#cfcabf','#b3aea4');
+      ctx.fillStyle='#e7e2d8'; ctx.beginPath(); ctx.arc(0,-sc*0.66,sc*0.12,0,TAU); ctx.fill();
+      break; }
+    case 'chest': {
+      box(0,0, sc*0.5, sc*0.36, sc*0.22, '#8a5b2e','#6f4622','#553418');
+      ctx.fillStyle='#ffd34d'; ctx.fillRect(-sc*0.04,-sc*0.16,sc*0.08,sc*0.1);
+      box(0,0, sc*0.52, sc*0.38, sc*0.0,'#caa15f','#caa15f','#caa15f');
+      break; }
+    case 'goldchair': {
+      box(0,0, sc*0.4, sc*0.4, sc*0.22, '#ffd970','#e6b53d','#c89422');
+      box(0,-sc*0.12, sc*0.42, sc*0.08, sc*0.42, '#ffe79a','#f0c44d','#d4a52e');
+      ctx.fillStyle='#fff3b0'; ctx.beginPath(); ctx.arc(0,-sc*0.5,sc*0.06,0,TAU); ctx.fill();
+      break; }
+    case 'clock': {
+      box(0,0, sc*0.3, sc*0.24, sc*0.7, '#8a5b2e','#6f4622','#553418');
+      ctx.fillStyle='#f4ecd0'; ctx.beginPath(); ctx.arc(0,-sc*0.62,sc*0.12,0,TAU); ctx.fill();
+      ctx.strokeStyle='#3a2a18'; ctx.lineWidth=Math.max(1,sc*0.02); ctx.beginPath();
+      ctx.moveTo(0,-sc*0.62); ctx.lineTo(0,-sc*0.7); ctx.moveTo(0,-sc*0.62); ctx.lineTo(sc*0.06,-sc*0.6); ctx.stroke();
+      break; }
+    case 'fountain': {
+      box(0,0, sc*1.0, sc*1.0, sc*0.16, '#cfcabf','#b8b3a8','#9c978d');
+      ctx.fillStyle='#6fc6ff'; ctx.beginPath(); ctx.ellipse(0,-sc*0.04,sc*0.4,sc*0.2,0,0,TAU); ctx.fill();
+      box(0,0, sc*0.24, sc*0.24, sc*0.5,'#e7e2d8','#cfcabf','#b3aea4');
+      ctx.strokeStyle='rgba(160,220,255,.8)'; ctx.lineWidth=Math.max(1,sc*0.03);
+      for(let i=0;i<6;i++){ const a=i/6*TAU; ctx.beginPath(); ctx.moveTo(0,-sc*0.5);
+        ctx.quadraticCurveTo(Math.cos(a)*sc*0.3,-sc*0.6, Math.cos(a)*sc*0.34,-sc*0.2); ctx.stroke(); }
+      break; }
+    case 'wheel': {
+      box(0,0, sc*0.18, sc*0.18, sc*0.3, '#6f4622','#553418','#402810');
+      ctx.save(); ctx.translate(0,-sc*0.5);
+      ctx.strokeStyle='#8a5b2e'; ctx.lineWidth=Math.max(2,sc*0.06);
+      ctx.beginPath(); ctx.arc(0,0,sc*0.3,0,TAU); ctx.stroke();
+      for(let i=0;i<8;i++){ const a=i/8*TAU; ctx.beginPath(); ctx.moveTo(0,0);
+        ctx.lineTo(Math.cos(a)*sc*0.42,Math.sin(a)*sc*0.42); ctx.stroke(); }
+      ctx.fillStyle='#caa15f'; ctx.beginPath(); ctx.arc(0,0,sc*0.08,0,TAU); ctx.fill();
+      ctx.restore(); break; }
+    case 'bigstatue': {
+      box(0,0, sc*0.7, sc*0.7, sc*0.2, '#cfcabf','#b8b3a8','#9c978d');
+      box(0,0, sc*0.36, sc*0.36, sc*0.8, '#ffe6a0','#e6c870','#c8a850');
+      ctx.fillStyle='#ffefb8'; ctx.beginPath(); ctx.arc(0,-sc*0.92,sc*0.18,0,TAU); ctx.fill();
+      ctx.fillStyle='#ffd34d'; for(let i=0;i<7;i++){ const a=i/7*Math.PI - Math.PI;
+        ctx.beginPath(); ctx.arc(Math.cos(a)*sc*0.26,-sc*0.92+Math.sin(a)*sc*0.26,sc*0.025,0,TAU); ctx.fill(); }
+      break; }
+    case 'exotree': {
+      box(0,0, sc*0.5, sc*0.5, sc*0.12, '#c0703a','#9c592c','#7e4622');
+      box(0,0, sc*0.16, sc*0.16, sc*0.7,'#8a5b2e','#6f4622','#553418');
+      const fol=(x,y,r,c)=>{ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill(); };
+      fol(0,-sc*0.78,sc*0.3,'#2f8f4f'); fol(-sc*0.22,-sc*0.66,sc*0.22,'#3fa55f');
+      fol(sc*0.22,-sc*0.68,sc*0.24,'#4fb56f'); fol(0,-sc*0.9,sc*0.2,'#5fc57f');
+      fol(sc*0.1,-sc*0.82,sc*0.06,'#ff7faa'); fol(-sc*0.12,-sc*0.7,sc*0.05,'#ffc24d');
+      break; }
+    default:
+      box(0,0, sc*0.4,sc*0.4,sc*0.3,'#caa15f','#a9743f','#8a5b2e');
+  }
+  ctx.globalAlpha = 1;
+};
+
+/* =========================================================================
+   Ocean — animated water, foam, particles, drifting catchable items
+   ========================================================================= */
+class Ocean {
+  constructor(game){
+    this.game = game;
+    this.t = 0;
+    this.foam = [];
+    for(let i=0;i<70;i++) this.foam.push({ x:rand(0,1), y:rand(0,1), s:rand(.5,1.6), sp:rand(.02,.06), ph:rand(0,TAU) });
+    this.spray = []; // pooled particles
+    this.driftItems = []; // catchable items in the water
+    this.spawnTimer = 0;
+    this.quality = true;
+  }
+  reset(){ this.driftItems.length=0; this.spawnTimer=0.5; }
+
+  maxDrift(){ return clamp(2 + Math.floor(this.game.raft.level/1.5), 2, 7); }
+
+  spawn(){
+    const g=this.game;
+    const key = g.items.rollKey(g.raft.level);
+    // spawn off one edge, drift across; angle keeps it passing near center
+    const side = randi(0,3);
+    const W=g.view.w, H=g.view.h;
+    let x,y,vx,vy;
+    const speed = rand(26,44);
+    const tx = W*0.5 + rand(-W*0.18,W*0.18), ty = H*0.5 + rand(-H*0.16,H*0.16);
+    if(side===0){ x=-80; y=rand(H*0.2,H*0.85); }
+    else if(side===1){ x=W+80; y=rand(H*0.2,H*0.85); }
+    else if(side===2){ x=rand(W*0.1,W*0.9); y=H*0.15; }
+    else { x=rand(W*0.1,W*0.9); y=H+80; }
+    const dx=tx-x, dy=ty-y, d=Math.hypot(dx,dy)||1;
+    vx=dx/d*speed; vy=dy/d*speed;
+    this.driftItems.push({ key, x, y, vx, vy, bob:rand(0,TAU), spin:rand(-.4,.4), life:0, scale:0 });
+  }
+
+  update(dt){
+    this.t += dt;
+    const g=this.game;
+    // spawn logic
+    this.spawnTimer -= dt;
+    if(this.spawnTimer<=0 && this.driftItems.length < this.maxDrift() && !g.miniGame.active){
+      this.spawn();
+      this.spawnTimer = rand(1.6, 3.4);
+    }
+    const W=g.view.w, H=g.view.h, m=130;
+    for(let i=this.driftItems.length-1;i>=0;i--){
+      const it=this.driftItems[i];
+      it.x += it.vx*dt; it.y += it.vy*dt; it.bob += dt*2; it.life+=dt;
+      it.scale = lerp(it.scale, 1, dt*4);
+      if(it.x<-m||it.x>W+m||it.y<-m||it.y>H+m){ this.driftItems.splice(i,1); }
+    }
+    // foam drift
+    for(const f of this.foam){ f.y += f.sp*dt; if(f.y>1.05){ f.y=-0.05; f.x=Math.random(); } f.ph+=dt; }
+    // spray pool update
+    for(let i=this.spray.length-1;i>=0;i--){ const p=this.spray[i]; p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=120*dt;
+      if(p.life<=0) this.spray.splice(i,1); }
+  }
+
+  addSpray(x,y,n,col){ for(let i=0;i<n;i++) this.spray.push({x,y,vx:rand(-40,40),vy:rand(-90,-20),life:rand(.4,.8),col:col||'#dff3ff'}); }
+
+  // find topmost drift item under a screen point
+  pick(px,py){
+    for(let i=this.driftItems.length-1;i>=0;i--){
+      const it=this.driftItems[i];
+      if(Math.hypot(it.x-px, it.y-py) < 46) return it;
+    }
+    return null;
+  }
+  remove(it){ const i=this.driftItems.indexOf(it); if(i>=0) this.driftItems.splice(i,1); }
+}
+
+/* =========================================================================
+   Raft — grid of floor cells + walls + placed furniture, level/beauty
+   ========================================================================= */
+class Raft {
+  constructor(game){
+    this.game = game;
+    this.floors = new Set();   // "x,y"
+    this.walls  = new Set();   // "x,y" (a wall tile occupies a floor edge cell visual)
+    this.furniture = [];       // {key,x,y,rot}
+    this.level = 1;
+    this.beauty = 0;
+    this.initDefault();
+  }
+  key(x,y){ return x+','+y; }
+  initDefault(){
+    this.floors.clear();
+    for(let x=-1;x<=1;x++) for(let y=-1;y<=1;y++) this.floors.add(this.key(x,y));
+  }
+  hasFloor(x,y){ return this.floors.has(this.key(x,y)); }
+  size(){ return this.floors.size; }
+
+  // a cell is occupied if any furniture footprint covers it
+  occupied(x,y,ignore){
+    for(const f of this.furniture){
+      if(f===ignore) continue;
+      const cells=this.footprint(f);
+      for(const c of cells) if(c.x===x && c.y===y) return true;
+    }
+    if(this.walls.has(this.key(x,y))) return true;
+    return false;
+  }
+  footprint(f){
+    const def=this.game.items.get(f.key);
+    let [w,h]=def.size;
+    if(f.rot&1){ const t=w; w=h; h=t; }
+    const cells=[];
+    for(let dx=0;dx<w;dx++) for(let dy=0;dy<h;dy++) cells.push({x:f.x+dx,y:f.y+dy});
+    return cells;
+  }
+  // can we place furniture of key at x,y with rot?
+  canPlace(key,x,y,rot,ignore){
+    const def=this.game.items.get(key);
+    let [w,h]=def.size; if(rot&1){ const t=w;w=h;h=t; }
+    for(let dx=0;dx<w;dx++) for(let dy=0;dy<h;dy++){
+      if(!this.hasFloor(x+dx,y+dy)) return false;
+      if(this.occupied(x+dx,y+dy,ignore)) return false;
+    }
+    return true;
+  }
+  // valid floor expansion: empty cell adjacent to existing floor
+  canBuildFloor(x,y){
+    if(this.hasFloor(x,y)) return false;
+    return this.hasFloor(x-1,y)||this.hasFloor(x+1,y)||this.hasFloor(x,y-1)||this.hasFloor(x,y+1);
+  }
+  recompute(){
+    let b=0;
+    for(const f of this.furniture) b += this.game.items.get(f.key).beauty;
+    b += this.walls.size*2;
+    b += this.floors.size; // base aesthetic
+    this.beauty = b;
+    // level from beauty + size
+    const score = this.beauty + this.floors.size*4;
+    this.level = clamp(1 + Math.floor(score/120), 1, 50);
+  }
+  xpProgress(){
+    const score = this.beauty + this.floors.size*4;
+    const cur = (this.level-1)*120;
+    const nxt = this.level*120;
+    return clamp((score-cur)/(nxt-cur),0,1);
+  }
+}
+
+/* =========================================================================
+   Player — cute big-head character; idle/walk/catch; walks to target cell
+   ========================================================================= */
+class Player {
+  constructor(game){
+    this.game=game;
+    this.gx=0; this.gy=0;      // grid pos (float)
+    this.tx=0; this.ty=0;      // target grid
+    this.state='idle'; this.anim=0; this.face=1; this.catchT=0;
+  }
+  moveTo(x,y){ this.tx=x; this.ty=y; }
+  update(dt){
+    this.anim += dt;
+    if(this.state==='catch'){ this.catchT-=dt; if(this.catchT<=0) this.state='idle'; return; }
+    const dx=this.tx-this.gx, dy=this.ty-this.gy, d=Math.hypot(dx,dy);
+    if(d>0.04){
+      const sp=3.2*dt; const m=Math.min(sp/d,1);
+      this.gx+=dx*m; this.gy+=dy*m; this.state='walk';
+      if(Math.abs(dx)>0.001) this.face = (dx>0)?1:-1;
+    } else { this.gx=this.tx; this.gy=this.ty; if(this.state!=='catch') this.state='idle'; }
+  }
+  doCatch(){ this.state='catch'; this.catchT=0.5; }
+}
+
+/* =========================================================================
+   MiniGame — moving needle + perfect zone, < 3s
+   ========================================================================= */
+class MiniGame {
+  constructor(game){
+    this.game=game; this.active=false; this.pos=0; this.dir=1; this.speed=1.25;
+    this.perfStart=0.42; this.perfEnd=0.58; this.goodStart=0.30; this.goodEnd=0.70;
+    this.item=null; this.driftRef=null; this.done=false;
+  }
+  start(driftItem){
+    this.active=true; this.done=false; this.item=driftItem.key; this.driftRef=driftItem;
+    this.pos=0; this.dir=1;
+    const def=this.game.items.get(this.item);
+    // rarer items = faster needle (harder)
+    this.speed = def.rarity==='legendary'?1.7 : def.rarity==='rare'?1.45 : 1.2;
+    // perfect zone narrower for rare
+    const half = def.rarity==='legendary'?0.05 : def.rarity==='rare'?0.065 : 0.085;
+    this.perfStart=0.5-half; this.perfEnd=0.5+half;
+    this.goodStart=0.30; this.goodEnd=0.70;
+    this.game.ui.openCatch(def);
+  }
+  update(dt){
+    if(!this.active||this.done) return;
+    this.pos += this.dir*this.speed*dt;
+    if(this.pos>=1){ this.pos=1; this.dir=-1; } else if(this.pos<=0){ this.pos=0; this.dir=1; }
+    this.game.ui.updateNeedle(this.pos);
+  }
+  tap(){
+    if(!this.active||this.done) return;
+    this.done=true;
+    const p=this.pos; let result;
+    if(p>=this.perfStart && p<=this.perfEnd) result='perfect';
+    else if(p>=this.goodStart && p<=this.goodEnd) result='good';
+    else result='miss';
+    this.game.onCatchResult(result, this.item, this.driftRef);
+  }
+  stop(){ this.active=false; this.item=null; this.driftRef=null; }
+}
+
+/* =========================================================================
+   Inventory — caught items waiting to be placed
+   ========================================================================= */
+class Inventory {
+  constructor(game){ this.game=game; this.items={}; } // key -> count
+  add(key,n=1){ this.items[key]=(this.items[key]||0)+n; }
+  remove(key,n=1){ if(!this.items[key]) return false; this.items[key]-=n; if(this.items[key]<=0) delete this.items[key]; return true; }
+  count(key){ return this.items[key]||0; }
+  total(){ let t=0; for(const k in this.items) t+=this.items[k]; return t; }
+}
+
+/* =========================================================================
+   BuildingSystem — placement/edit modes & ghost preview
+   ========================================================================= */
+class BuildingSystem {
+  constructor(game){
+    this.game=game;
+    this.mode='none';      // none | placeItem | floor | wall | edit
+    this.ghostKey=null; this.ghost=null; // {key,x,y,rot,fromInv,moving}
+    this.floorCost=()=>Math.floor(8 + this.game.raft.floors.size*2.5);
+    this.wallCost=()=>14;
+  }
+  startPlaceItem(key){
+    this.cancel();
+    this.mode='placeItem';
+    // place near player
+    const px=Math.round(this.game.player.gx), py=Math.round(this.game.player.gy);
+    let spot=this._findSpot(key, px, py);
+    this.ghost={ key, x:spot.x, y:spot.y, rot:0, fromInv:true, moving:false };
+    this.game.ui.showBuildActions(true);
+    this.game.ui.closeAllPanels();
+  }
+  startMove(furn){
+    this.cancel();
+    this.mode='placeItem';
+    this.ghost={ key:furn.key, x:furn.x, y:furn.y, rot:furn.rot, fromInv:false, moving:true, ref:furn };
+    // temporarily remove from raft for collision checks via ignore
+    this.game.ui.showBuildActions(true);
+  }
+  _findSpot(key,px,py){
+    if(this.game.raft.canPlace(key,px,py,0)) return {x:px,y:py};
+    for(let r=1;r<=6;r++) for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
+      if(this.game.raft.canPlace(key,px+dx,py+dy,0)) return {x:px+dx,y:py+dy};
+    }
+    return {x:px,y:py};
+  }
+  setMode(m){
+    this.cancel();
+    this.mode=m; // floor | wall | edit | none
+  }
+  rotate(){ if(this.ghost){ this.ghost.rot=(this.ghost.rot+1)&3; } }
+  moveGhost(x,y){ if(this.ghost){ this.ghost.x=x; this.ghost.y=y; } }
+  confirm(){
+    if(this.mode!=='placeItem'||!this.ghost) return;
+    const g=this.ghost; const ignore = g.moving? g.ref : null;
+    if(!this.game.raft.canPlace(g.key,g.x,g.y,g.rot,ignore)){ this.game.ui.toast('Здесь нельзя ставить!'); return; }
+    if(g.moving){ g.ref.x=g.x; g.ref.y=g.y; g.ref.rot=g.rot; }
+    else {
+      this.game.inv.remove(g.key);
+      this.game.raft.furniture.push({key:g.key,x:g.x,y:g.y,rot:g.rot});
+      // walk player + celebrate
+      this.game.player.doCatch();
+    }
+    this.game.raft.recompute();
+    this.game.refreshHUD(); this.game.ui.renderInventory();
+    const def=this.game.items.get(g.key);
+    this.game.spawnGain('+'+def.beauty+' ⭐', g.x, g.y, '#ffe07a');
+    this.game.ui.toast('Размещено: '+def.name);
+    this.cancel();
+    this.game.save.save();
+  }
+  cancel(){ this.ghost=null; if(this.mode==='placeItem') this.mode='none'; this.game.ui.showBuildActions(false); }
+
+  // tap on world during build modes
+  worldTap(gx,gy){
+    const g=this.game;
+    if(this.mode==='floor'){
+      if(g.raft.canBuildFloor(gx,gy)){
+        const cost=this.floorCost();
+        if(g.wood>=cost){ g.wood-=cost; g.raft.floors.add(g.raft.key(gx,gy));
+          g.raft.recompute(); g.refreshHUD(); g.spawnGain('-'+cost+' 🪵',gx,gy,'#ffcaa0');
+          g.ocean.addSpray(...g.iso(gx,gy),10,'#dff3ff'); g.ui.renderBuildList(); g.save.save();
+        } else g.ui.toast('Недостаточно древесины ('+cost+'🪵)');
+      } else g.ui.toast('Стройте рядом с плотом');
+    } else if(this.mode==='wall'){
+      if(g.raft.hasFloor(gx,gy) && !g.raft.walls.has(g.raft.key(gx,gy)) && !g.raft.occupied(gx,gy)){
+        const cost=this.wallCost();
+        if(g.wood>=cost){ g.wood-=cost; g.raft.walls.add(g.raft.key(gx,gy));
+          g.raft.recompute(); g.refreshHUD(); g.spawnGain('-'+cost+' 🪵',gx,gy,'#ffcaa0'); g.save.save();
+        } else g.ui.toast('Недостаточно древесины ('+cost+'🪵)');
+      } else g.ui.toast('Нельзя поставить стену тут');
+    } else if(this.mode==='edit'){
+      // tap furniture to move; tap wall to remove
+      const f=g.pickFurniture(gx,gy);
+      if(f){ this.startMove(f); g.ui.toast('Перетащи и подтверди'); return; }
+      if(g.raft.walls.has(g.raft.key(gx,gy))){ g.raft.walls.delete(g.raft.key(gx,gy));
+        g.wood+=Math.floor(this.wallCost()*0.5); g.raft.recompute(); g.refreshHUD(); g.ui.toast('Стена убрана (+вернули 🪵)'); g.save.save(); }
+    }
+  }
+}
+
+/* =========================================================================
+   Renderer — isometric world drawing
+   ========================================================================= */
+class Renderer {
+  constructor(game,canvas){
+    this.game=game; this.cv=canvas; this.ctx=canvas.getContext('2d',{alpha:false});
+    this.TW=64; this.TH=32; this.TH_THICK=14; // tile width/height & thickness
+  }
+  resize(){
+    const dpr=Math.min(window.devicePixelRatio||1, 2);
+    const w=window.innerWidth, h=window.innerHeight;
+    this.cv.width=Math.floor(w*dpr); this.cv.height=Math.floor(h*dpr);
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    this.game.view.w=w; this.game.view.h=h;
+    this.game.view.cx=w/2; this.game.view.cy=h*0.46;
+  }
+  render(dt){
+    const ctx=this.ctx, g=this.game, V=g.view;
+    this.drawSky();
+    this.drawWater(dt);
+    this.drawFoam();
+    this.drawDriftItems();
+    this.drawRaft();
+    this.drawSpray();
+    if(g.settings.fps) this.drawFps();
+  }
+
+  drawSky(){
+    const ctx=this.ctx, V=this.game.view;
+    const grad=ctx.createLinearGradient(0,0,0,V.h);
+    grad.addColorStop(0,'#2a86c4'); grad.addColorStop(0.5,'#1f6ea8'); grad.addColorStop(1,'#15527e');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,V.w,V.h);
+  }
+
+  drawWater(dt){
+    const ctx=this.ctx, V=this.game.view, t=this.game.ocean.t, q=this.game.settings.water;
+    // moving wave bands
+    const bands = q?14:7;
+    for(let i=0;i<bands;i++){
+      const yy = (i/bands)*V.h;
+      const a = 0.05 + 0.05*Math.sin(t*0.8 + i*0.7);
+      ctx.fillStyle='rgba(120,200,255,'+a.toFixed(3)+')';
+      ctx.beginPath();
+      ctx.moveTo(0,yy);
+      const amp= q?8:4;
+      for(let x=0;x<=V.w;x+=q?40:80){
+        ctx.lineTo(x, yy + Math.sin(x*0.015 + t*1.4 + i)*amp);
+      }
+      ctx.lineTo(V.w,yy+18); ctx.lineTo(0,yy+18); ctx.closePath(); ctx.fill();
+    }
+    // sun glints
+    if(q){
+      ctx.fillStyle='rgba(255,255,255,0.10)';
+      for(let i=0;i<26;i++){
+        const x=(i*97.3 + Math.sin(t*0.5+i)*30)%V.w;
+        const y=(i*53.7 + t*8)%V.h;
+        const s=1+ (Math.sin(t*2+i)*0.5+0.5)*2.4;
+        ctx.fillRect(x,y,s,s);
+      }
+    }
+  }
+
+  drawFoam(){
+    const ctx=this.ctx, V=this.game.view;
+    for(const f of this.game.ocean.foam){
+      const x=f.x*V.w, y=f.y*V.h;
+      const a=0.12+0.1*Math.sin(f.ph);
+      ctx.fillStyle='rgba(255,255,255,'+a.toFixed(3)+')';
+      ctx.beginPath(); ctx.ellipse(x,y,f.s*7,f.s*3,0,0,TAU); ctx.fill();
+    }
+  }
+
+  drawDriftItems(){
+    const ctx=this.ctx, g=this.game;
+    for(const it of g.ocean.driftItems){
+      const def=g.items.get(it.key);
+      const by=Math.sin(it.bob)*4;
+      ctx.save();
+      ctx.translate(it.x, it.y+by);
+      // little wooden float under it
+      ctx.save();
+      ctx.globalAlpha=0.3; ctx.fillStyle='#0a2f4a';
+      ctx.beginPath(); ctx.ellipse(0,18,30,12,0,0,TAU); ctx.fill();
+      ctx.restore();
+      // raft plank
+      ctx.fillStyle='#a9743f'; ctx.beginPath();
+      ctx.moveTo(0,8); ctx.lineTo(28,18); ctx.lineTo(0,28); ctx.lineTo(-28,18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#8a5b2e'; ctx.beginPath();
+      ctx.moveTo(28,18); ctx.lineTo(0,28); ctx.lineTo(0,32); ctx.lineTo(28,22); ctx.closePath(); ctx.fill();
+      const sc=it.scale*0.9;
+      ctx.scale(sc,sc);
+      g.items._draw(ctx, def, 44, 0, 1);
+      // rarity glow ring
+      if(def.rarity!=='common'){
+        ctx.globalAlpha=0.5+0.3*Math.sin(g.ocean.t*4);
+        ctx.strokeStyle=RARITY[def.rarity].glow; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.ellipse(0,18,34,15,0,0,TAU); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+      ctx.restore();
+    }
+  }
+
+  // iso projection for a grid cell center
+  iso(gx,gy){
+    const V=this.game.view;
+    return [ V.cx + (gx-gy)*this.TW/2, V.cy + (gx+gy)*this.TH/2 ];
+  }
+
+  drawTileTop(gx,gy, top,left,right, lift){
+    const ctx=this.ctx; const [sx,sy]=this.iso(gx,gy); const Y=sy-(lift||0);
+    const hw=this.TW/2, hh=this.TH/2, th=this.TH_THICK;
+    // sides
+    ctx.fillStyle=left; ctx.beginPath();
+    ctx.moveTo(sx-hw,Y); ctx.lineTo(sx,Y+hh); ctx.lineTo(sx,Y+hh+th); ctx.lineTo(sx-hw,Y+th); ctx.closePath(); ctx.fill();
+    ctx.fillStyle=right; ctx.beginPath();
+    ctx.moveTo(sx+hw,Y); ctx.lineTo(sx,Y+hh); ctx.lineTo(sx,Y+hh+th); ctx.lineTo(sx+hw,Y+th); ctx.closePath(); ctx.fill();
+    // top
+    ctx.fillStyle=top; ctx.beginPath();
+    ctx.moveTo(sx,Y-hh); ctx.lineTo(sx+hw,Y); ctx.lineTo(sx,Y+hh); ctx.lineTo(sx-hw,Y); ctx.closePath(); ctx.fill();
+  }
+
+  drawRaft(){
+    const g=this.game, ctx=this.ctx, B=g.build;
+    // reflection / shadow blob under raft
+    const cells=[...g.raft.floors].map(k=>k.split(',').map(Number));
+    // soft shadow
+    ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle='#04263d';
+    for(const [x,y] of cells){ const [sx,sy]=this.iso(x,y);
+      ctx.beginPath(); ctx.ellipse(sx,sy+14,this.TW*0.55,this.TH*0.7,0,0,TAU); ctx.fill(); }
+    ctx.restore();
+
+    // sort all drawables by depth (gx+gy), furniture too
+    const draw = [];
+    for(const [x,y] of cells) draw.push({type:'floor',x,y,d:x+y-0.5});
+    for(const k of g.raft.walls){ const [x,y]=k.split(',').map(Number); draw.push({type:'wall',x,y,d:x+y}); }
+    for(const f of g.raft.furniture){ draw.push({type:'furn',f,x:f.x,y:f.y,d:f.x+f.y+0.1}); }
+    // ghost
+    if(B.ghost){ draw.push({type:'ghost',x:B.ghost.x,y:B.ghost.y,d:B.ghost.x+B.ghost.y+0.2}); }
+    // player
+    draw.push({type:'player',x:g.player.gx,y:g.player.gy,d:g.player.gx+g.player.gy+0.15});
+
+    draw.sort((a,b)=> a.d-b.d);
+
+    // build highlight cells (valid floor spots)
+    if(B.mode==='floor'){
+      const seen=new Set();
+      for(const [x,y] of cells){
+        const ns=[[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+        for(const [nx,ny] of ns){ const kk=nx+','+ny; if(seen.has(kk))continue; seen.add(kk);
+          if(g.raft.canBuildFloor(nx,ny)){ const [sx,sy]=this.iso(nx,ny);
+            ctx.fillStyle='rgba(120,220,140,'+(0.18+0.1*Math.sin(g.ocean.t*3)).toFixed(2)+')';
+            ctx.beginPath(); ctx.moveTo(sx,sy-this.TH/2);ctx.lineTo(sx+this.TW/2,sy);ctx.lineTo(sx,sy+this.TH/2);ctx.lineTo(sx-this.TW/2,sy);ctx.closePath();ctx.fill();
+          }
+        }
+      }
+    }
+
+    for(const o of draw){
+      if(o.type==='floor'){
+        // plank colors with subtle per-tile variation
+        const v=((o.x*7+o.y*13)%3);
+        const top = v===0?'#c08a4e': v===1?'#b67f44':'#bd8649';
+        this.drawTileTop(o.x,o.y, top,'#8a5b2e','#6f4622',0);
+        // plank lines
+        const [sx,sy]=this.iso(o.x,o.y);
+        ctx.strokeStyle='rgba(90,60,30,.35)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(sx-this.TW/2,sy); ctx.lineTo(sx,sy+this.TH/2); ctx.stroke();
+      } else if(o.type==='wall'){
+        this.drawTileTop(o.x,o.y,'#caa15f','#8a5b2e','#6f4622',0);
+        // wall posts
+        const [sx,sy]=this.iso(o.x,o.y);
+        ctx.fillStyle='#9c6c38';
+        ctx.fillRect(sx-3, sy-26, 6, 26);
+        ctx.fillStyle='#c79255'; ctx.fillRect(sx-4, sy-30, 8, 6);
+      } else if(o.type==='furn'){
+        const [sx,sy]=this.iso(o.x,o.y);
+        ctx.save(); ctx.translate(sx, sy);
+        const def=g.items.get(o.f.key);
+        // offset for multi-cell to center on footprint
+        let [w,h]=def.size; if(o.f.rot&1){const t=w;w=h;h=t;}
+        ctx.translate((w-1)*this.TW/4 - (h-1)*this.TW/4, (w-1)*this.TH/4 + (h-1)*this.TH/4);
+        g.items._draw(ctx, def, this.TW*0.95, o.f.rot, 1);
+        ctx.restore();
+      } else if(o.type==='ghost'){
+        const B2=B.ghost; const [sx,sy]=this.iso(B2.x,B2.y);
+        const ok=g.raft.canPlace(B2.key,B2.x,B2.y,B2.rot, B2.moving?B2.ref:null);
+        const def=g.items.get(B2.key);
+        // footprint tint
+        let [w,h]=def.size; if(B2.rot&1){const t=w;w=h;h=t;}
+        ctx.fillStyle= ok?'rgba(120,220,140,.35)':'rgba(230,90,80,.4)';
+        for(let dx=0;dx<w;dx++)for(let dy=0;dy<h;dy++){ const [tx,ty]=this.iso(B2.x+dx,B2.y+dy);
+          ctx.beginPath(); ctx.moveTo(tx,ty-this.TH/2);ctx.lineTo(tx+this.TW/2,ty);ctx.lineTo(tx,ty+this.TH/2);ctx.lineTo(tx-this.TW/2,ty);ctx.closePath();ctx.fill(); }
+        ctx.save(); ctx.translate(sx,sy); ctx.globalAlpha=0.7;
+        ctx.translate((w-1)*this.TW/4 - (h-1)*this.TW/4, (w-1)*this.TH/4 + (h-1)*this.TH/4);
+        g.items._draw(ctx, def, this.TW*0.95, B2.rot, 0.7);
+        ctx.restore();
+      } else if(o.type==='player'){
+        this.drawPlayer(g.player);
+      }
+    }
+  }
+
+  drawPlayer(p){
+    const ctx=this.ctx; const [sx,sy]=this.iso(p.gx,p.gy);
+    let bob=0, lean=0, armSwing=0;
+    if(p.state==='walk'){ bob=Math.abs(Math.sin(p.anim*9))*3; armSwing=Math.sin(p.anim*9)*0.5; }
+    else if(p.state==='idle'){ bob=Math.sin(p.anim*2.2)*1.5; }
+    else if(p.state==='catch'){ lean=-0.3; armSwing=Math.sin((0.5-p.catchT)*20)*0.8; }
+    const f=p.face;
+    ctx.save(); ctx.translate(sx, sy-bob);
+    // shadow
+    ctx.globalAlpha=0.25; ctx.fillStyle='#04263d';
+    ctx.beginPath(); ctx.ellipse(0,4,13,6,0,0,TAU); ctx.fill(); ctx.globalAlpha=1;
+    // body (rounded)
+    ctx.fillStyle='#4f9bd6';
+    this._roundBody(ctx,-9,-26,18,22,8);
+    // arms
+    ctx.fillStyle='#3b7fb6';
+    ctx.save(); ctx.translate(f*9,-22); ctx.rotate(armSwing*f); ctx.fillRect(-3,0,5,12); ctx.restore();
+    ctx.save(); ctx.translate(-f*9,-22); ctx.rotate(-armSwing*f); ctx.fillRect(-2,0,5,12); ctx.restore();
+    // legs
+    ctx.fillStyle='#6f4622';
+    const ls=p.state==='walk'?Math.sin(p.anim*9)*4:0;
+    ctx.fillRect(-6, -6+Math.max(0,ls), 5, 8); ctx.fillRect(2, -6+Math.max(0,-ls), 5, 8);
+    // head (big)
+    ctx.save(); ctx.rotate(lean);
+    ctx.fillStyle='#ffd9a8';
+    ctx.beginPath(); ctx.arc(0,-38,15,0,TAU); ctx.fill();
+    // hair
+    ctx.fillStyle='#7a4a28';
+    ctx.beginPath(); ctx.arc(0,-40,15,Math.PI,TAU); ctx.fill();
+    ctx.fillRect(-15,-42,30,4);
+    // eyes
+    ctx.fillStyle='#2a2a2a';
+    ctx.beginPath(); ctx.arc(f*4-2,-36,2.2,0,TAU); ctx.arc(f*4+5,-36,2.2,0,TAU); ctx.fill();
+    // cheeks
+    ctx.fillStyle='rgba(255,140,140,.5)';
+    ctx.beginPath(); ctx.arc(f*4-4,-32,2.5,0,TAU); ctx.arc(f*4+7,-32,2.5,0,TAU); ctx.fill();
+    // smile
+    ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.arc(f*4+1.5,-32,3,0.1*Math.PI,0.9*Math.PI); ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+  _roundBody(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill();
+  }
+
+  drawSpray(){
+    const ctx=this.ctx;
+    for(const p of this.game.ocean.spray){
+      ctx.globalAlpha=clamp(p.life*1.5,0,1); ctx.fillStyle=p.col;
+      ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,TAU); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  drawFps(){
+    const ctx=this.ctx;
+    ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(this.game.view.w-66,this.game.view.h-26,58,20);
+    ctx.fillStyle='#9effa0'; ctx.font='12px monospace';
+    ctx.fillText(this.game.fps.toFixed(0)+' FPS', this.game.view.w-60, this.game.view.h-12);
+  }
+}
+
+/* =========================================================================
+   SaveSystem — localStorage persistence + autosave
+   ========================================================================= */
+class SaveSystem {
+  constructor(game){ this.game=game; this.KEY='oceanHomestead_v1'; this.timer=0; }
+  save(){
+    try{
+      const g=this.game;
+      const data={
+        wood:g.wood,
+        floors:[...g.raft.floors],
+        walls:[...g.raft.walls],
+        furniture:g.raft.furniture,
+        inv:g.inv.items,
+        settings:g.settings,
+        seenTutorial:g.seenTutorial,
+      };
+      localStorage.setItem(this.KEY, JSON.stringify(data));
+    }catch(e){ /* storage may be unavailable */ }
+  }
+  load(){
+    try{
+      const raw=localStorage.getItem(this.KEY); if(!raw) return false;
+      const d=JSON.parse(raw); const g=this.game;
+      g.wood = d.wood ?? 30;
+      g.raft.floors = new Set(d.floors&&d.floors.length? d.floors : ['-1,-1','0,-1','1,-1','-1,0','0,0','1,0','-1,1','0,1','1,1']);
+      g.raft.walls = new Set(d.walls||[]);
+      g.raft.furniture = d.furniture||[];
+      g.inv.items = d.inv||{};
+      if(d.settings) Object.assign(g.settings, d.settings);
+      g.seenTutorial = d.seenTutorial||false;
+      g.raft.recompute();
+      return true;
+    }catch(e){ return false; }
+  }
+  update(dt){
+    if(!this.game.settings.auto) return;
+    this.timer+=dt; if(this.timer>=30){ this.timer=0; this.save(); this.game.ui.toast('💾 Сохранено'); }
+  }
+  reset(){ try{ localStorage.removeItem(this.KEY);}catch(e){} }
+}
+
+/* =========================================================================
+   UI — DOM panels, HUD binding, minigame display
+   ========================================================================= */
+class UI {
+  constructor(game){
+    this.game=game;
+    this.panels={ inventory:document.getElementById('panel-inventory'),
+                  build:document.getElementById('panel-build'),
+                  settings:document.getElementById('panel-settings') };
+    this.openPanel=null;
+    this.invFilter='all'; this.buildTab='floor';
+    this._cache={};
+    this.bind();
+  }
+  el(id){ return this._cache[id]||(this._cache[id]=document.getElementById(id)); }
+
+  bind(){
+    const g=this.game;
+    // bottom tabs
+    document.querySelectorAll('.tabBtn').forEach(b=>{
+      b.addEventListener('click',()=>this.togglePanel(b.dataset.panel));
+    });
+    document.getElementById('btnSettings').addEventListener('click',()=>this.togglePanel('settings'));
+    document.querySelectorAll('[data-close]').forEach(x=>x.addEventListener('click',()=>this.closeAllPanels()));
+    document.getElementById('scrim').addEventListener('click',()=>this.closeAllPanels());
+
+    // inventory filters
+    this.panels.inventory.querySelectorAll('[data-filter]').forEach(s=>{
+      s.addEventListener('click',()=>{ this.invFilter=s.dataset.filter;
+        this.panels.inventory.querySelectorAll('[data-filter]').forEach(o=>o.classList.toggle('active',o===s));
+        this.renderInventory(); });
+    });
+    // build tabs
+    this.panels.build.querySelectorAll('[data-build]').forEach(s=>{
+      s.addEventListener('click',()=>{ this.buildTab=s.dataset.build;
+        this.panels.build.querySelectorAll('[data-build]').forEach(o=>o.classList.toggle('active',o===s));
+        g.build.setMode(this.buildTab==='floor'?'floor':this.buildTab==='wall'?'wall':'edit');
+        this.renderBuildList(); });
+    });
+
+    // catch button
+    document.getElementById('catchBtn').addEventListener('click',()=>g.miniGame.tap());
+
+    // build actions
+    document.getElementById('baRotate').addEventListener('click',()=>g.build.rotate());
+    document.getElementById('baConfirm').addEventListener('click',()=>g.build.confirm());
+    document.getElementById('baCancel').addEventListener('click',()=>g.build.cancel());
+
+    // settings switches
+    const sw=(id,key,cb)=>{ const e=document.getElementById(id);
+      e.addEventListener('click',()=>{ g.settings[key]=!g.settings[key]; e.classList.toggle('on',g.settings[key]); cb&&cb(); g.save.save(); }); };
+    sw('swSound','sound'); sw('swWater','water'); sw('swAuto','auto'); sw('swFps','fps');
+    document.getElementById('btnReset').addEventListener('click',()=>{
+      if(confirm('Сбросить весь прогресс?')){ g.save.reset(); location.reload(); }
+    });
+  }
+
+  syncSettings(){
+    const g=this.game;
+    document.getElementById('swSound').classList.toggle('on',g.settings.sound);
+    document.getElementById('swWater').classList.toggle('on',g.settings.water);
+    document.getElementById('swAuto').classList.toggle('on',g.settings.auto);
+    document.getElementById('swFps').classList.toggle('on',g.settings.fps);
+  }
+
+  togglePanel(name){
+    if(this.openPanel===name){ this.closeAllPanels(); return; }
+    this.closeAllPanels(true);
+    this.openPanel=name; this.panels[name].classList.add('open');
+    document.getElementById('scrim').classList.add('show');
+    document.querySelectorAll('.tabBtn').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));
+    if(name==='inventory') this.renderInventory();
+    if(name==='build'){ this.game.build.setMode(this.buildTab==='floor'?'floor':this.buildTab==='wall'?'wall':'edit'); this.renderBuildList(); }
+    if(name==='settings') this.syncSettings();
+  }
+  closeAllPanels(keepScrim){
+    for(const k in this.panels) this.panels[k].classList.remove('open');
+    this.openPanel=null;
+    if(!keepScrim) document.getElementById('scrim').classList.remove('show');
+    document.querySelectorAll('.tabBtn').forEach(b=>b.classList.remove('active'));
+    if(this.game.build.mode!=='placeItem') this.game.build.setMode('none');
+  }
+
+  /* ---------- inventory rendering ---------- */
+  renderInventory(){
+    const g=this.game, grid=document.getElementById('invGrid'); grid.innerHTML='';
+    const keys=Object.keys(g.inv.items).filter(k=>g.inv.items[k]>0)
+      .filter(k=> this.invFilter==='all' || g.items.get(k).rarity===this.invFilter);
+    if(keys.length===0){ grid.innerHTML='<div class="empty">Пусто. Лови предметы в океане! 🌊</div>'; return; }
+    for(const k of keys){
+      const def=g.items.get(k);
+      const cell=document.createElement('div'); cell.className='cell';
+      const rar=document.createElement('div'); rar.className='rar'; rar.style.background=RARITY[def.rarity].col; cell.appendChild(rar);
+      const cnv=document.createElement('canvas'); cnv.className='cnv'; cnv.width=80; cnv.height=80; cell.appendChild(cnv);
+      g.items.drawIcon(cnv.getContext('2d'), k, 80);
+      const nm=document.createElement('div'); nm.className='nm'; nm.textContent=def.name; cell.appendChild(nm);
+      const cnt=document.createElement('div'); cnt.className='cnt'; cnt.textContent='×'+g.inv.items[k]; cell.appendChild(cnt);
+      // tap = place; long-press = recycle
+      let lp=null, did=false;
+      const start=()=>{ did=false; lp=setTimeout(()=>{ did=true; this.recycle(k); },550); };
+      const end=()=>{ clearTimeout(lp); if(!did) this.game.build.startPlaceItem(k); };
+      cell.addEventListener('touchstart',e=>{e.preventDefault();start();},{passive:false});
+      cell.addEventListener('touchend',e=>{e.preventDefault();end();},{passive:false});
+      cell.addEventListener('touchcancel',()=>clearTimeout(lp));
+      cell.addEventListener('mousedown',start); cell.addEventListener('mouseup',end);
+      cell.addEventListener('mouseleave',()=>clearTimeout(lp));
+      grid.appendChild(cell);
+    }
+  }
+  recycle(k){
+    const g=this.game, def=g.items.get(k);
+    if(g.inv.remove(k)){ const w=def.wood; g.wood+=w; g.refreshHUD(); this.renderInventory();
+      this.toast('♻️ Переработано: +'+w+' 🪵'); g.save.save(); }
+  }
+
+  /* ---------- build list ---------- */
+  renderBuildList(){
+    const g=this.game, list=document.getElementById('buildList'); list.innerHTML='';
+    if(this.buildTab==='floor'){
+      const cost=g.build.floorCost();
+      list.appendChild(this._buildCard('🪵 Клетка плота','Расширь свою базу на 1 клетку. Нажми на подсвеченную область у края плота.',cost,()=>{}));
+      this._note(list,'Текущий размер плота: '+g.raft.floors.size+' клеток. Нажми зелёную клетку на воде, чтобы построить.');
+    } else if(this.buildTab==='wall'){
+      const cost=g.build.wallCost();
+      list.appendChild(this._buildCard('🧱 Стена','Декоративная стена по краю. Добавляет красоту. Нажми на клетку плота.',cost,()=>{}));
+      this._note(list,'Стены добавляют +2 ⭐ каждая.');
+    } else {
+      this._note(list,'Режим правки: нажми на мебель, чтобы переместить её. Нажми на стену, чтобы убрать (вернётся часть 🪵).');
+    }
+  }
+  _buildCard(title,desc,cost,cb){
+    const g=this.game;
+    const row=document.createElement('div'); row.className='bItem';
+    const cnv=document.createElement('canvas'); cnv.className='cnv'; cnv.width=64;cnv.height=64;
+    const cx=cnv.getContext('2d');
+    // small preview tile
+    cx.fillStyle='#c08a4e'; cx.beginPath(); cx.moveTo(32,12);cx.lineTo(56,28);cx.lineTo(32,44);cx.lineTo(8,28);cx.closePath();cx.fill();
+    cx.fillStyle='#8a5b2e'; cx.beginPath(); cx.moveTo(8,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(8,36);cx.closePath();cx.fill();
+    cx.fillStyle='#6f4622'; cx.beginPath(); cx.moveTo(56,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(56,36);cx.closePath();cx.fill();
+    row.appendChild(cnv);
+    const info=document.createElement('div'); info.className='info';
+    info.innerHTML='<b>'+title+'</b><small>'+desc+'</small>'; row.appendChild(info);
+    const btn=document.createElement('div'); btn.className='costBtn'+(g.wood<cost?' disabled':'');
+    btn.innerHTML=cost+' 🪵'; row.appendChild(btn);
+    return row;
+  }
+  _note(list,txt){ const n=document.createElement('div'); n.style.cssText='font-size:12px;color:#9cc3df;text-align:center;padding:8px'; n.textContent=txt; list.appendChild(n); }
+
+  /* ---------- catch minigame ---------- */
+  openCatch(def){
+    document.getElementById('catchName').textContent=def.name;
+    document.getElementById('catchResult').textContent='';
+    document.getElementById('catchBtn').style.display='';
+    const mg=this.game.miniGame;
+    const pf=document.getElementById('barPerfect');
+    pf.style.left=(mg.perfStart*100)+'%'; pf.style.width=((mg.perfEnd-mg.perfStart)*100)+'%';
+    document.getElementById('catch').classList.add('open');
+  }
+  updateNeedle(p){ document.getElementById('needle').style.left=(p*100)+'%'; }
+  showCatchResult(result){
+    const r=document.getElementById('catchResult');
+    const map={perfect:['ОТЛИЧНО! ✨','#7dffa0'],good:['ХОРОШО! 👍','#9bdcff'],miss:['МИМО… 💨','#ff9a8a']};
+    r.textContent=map[result][0]; r.style.color=map[result][1];
+    document.getElementById('catchBtn').style.display='none';
+    setTimeout(()=>document.getElementById('catch').classList.remove('open'), 750);
+  }
+
+  showBuildActions(show){ document.getElementById('buildActions').classList.toggle('open',show); }
+
+  toast(msg){
+    const t=document.getElementById('toast');
+    const d=document.createElement('div'); d.className='toast'; d.textContent=msg; t.appendChild(d);
+    setTimeout(()=>d.remove(),2200);
+  }
+  hint(show){ document.getElementById('hint').classList.toggle('show',show); }
+}
+
+/* =========================================================================
+   Game — orchestrator, input, loop
+   ========================================================================= */
+class Game {
+  constructor(){
+    this.view={w:0,h:0,cx:0,cy:0};
+    this.wood=30;
+    this.settings={ sound:true, water:true, auto:true, fps:false };
+    this.seenTutorial=false;
+    this.fps=60; this._fpsAcc=0; this._fpsCnt=0;
+
+    this.items=new ItemManager();
+    this.ocean=new Ocean(this);
+    this.raft=new Raft(this);
+    this.player=new Player(this);
+    this.inv=new Inventory(this);
+    this.build=new BuildingSystem(this);
+    this.miniGame=new MiniGame(this);
+    this.save=new SaveSystem(this);
+    this.ui=new UI(this);
+    this.renderer=new Renderer(this, document.getElementById('cv'));
+
+    this.save.load();
+    this.raft.recompute();
+    this.ui.syncSettings();
+    this.renderer.resize();
+    this.refreshHUD();
+    this.bindInput();
+
+    window.addEventListener('resize',()=>this.renderer.resize());
+    if(!this.seenTutorial){ this.ui.hint(true); setTimeout(()=>this.ui.hint(false),6000); this.seenTutorial=true; this.save.save(); }
+
+    this.last=performance.now();
+    requestAnimationFrame(t=>this.loop(t));
+  }
+
+  iso(gx,gy){ return this.renderer.iso(gx,gy); }
+
+  // convert screen point to grid cell
+  screenToGrid(px,py){
+    const V=this.view, TW=this.renderer.TW, TH=this.renderer.TH;
+    const dx=px-V.cx, dy=py-V.cy;
+    const gx=(dx/(TW/2)+dy/(TH/2))/2;
+    const gy=(dy/(TH/2)-dx/(TW/2))/2;
+    return { x:Math.round(gx), y:Math.round(gy) };
+  }
+
+  pickFurniture(gx,gy){
+    // topmost furniture whose footprint includes cell
+    for(let i=this.raft.furniture.length-1;i>=0;i--){
+      const f=this.raft.furniture[i];
+      for(const c of this.raft.footprint(f)) if(c.x===gx&&c.y===gy) return f;
+    }
+    return null;
+  }
+
+  bindInput(){
+    const cv=document.getElementById('cv');
+    let downX=0,downY=0,downT=0,dragging=false,lpTimer=null,lpFired=false;
+
+    const getPt=e=>{ const t=e.touches?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; };
+
+    const onDown=e=>{
+      if(e.target!==cv) return;
+      const p=getPt(e); downX=p.x; downY=p.y; downT=performance.now(); dragging=false; lpFired=false;
+      // long press detection (only meaningful in non-build context for info)
+      lpTimer=setTimeout(()=>{ lpFired=true; this.onLongPress(p.x,p.y); },550);
+    };
+    const onMove=e=>{
+      const p=getPt(e);
+      if(Math.hypot(p.x-downX,p.y-downY)>10){ dragging=true; clearTimeout(lpTimer); }
+      // drag ghost during placement
+      if(this.build.mode==='placeItem' && this.build.ghost && dragging){
+        const g=this.screenToGrid(p.x,p.y); this.build.moveGhost(g.x,g.y);
+      }
+    };
+    const onUp=e=>{
+      clearTimeout(lpTimer);
+      const dt=performance.now()-downT;
+      const p=e.changedTouches?{x:e.changedTouches[0].clientX,y:e.changedTouches[0].clientY}:{x:downX,y:downY};
+      if(lpFired) return;
+      if(!dragging && dt<500){ this.onTap(p.x,p.y); }
+      else if(dragging && this.build.mode==='placeItem'){ /* ghost already moved */ }
+    };
+
+    cv.addEventListener('touchstart',e=>{e.preventDefault();onDown(e);},{passive:false});
+    cv.addEventListener('touchmove',e=>{e.preventDefault();onMove(e);},{passive:false});
+    cv.addEventListener('touchend',e=>{e.preventDefault();onUp(e);},{passive:false});
+    cv.addEventListener('mousedown',onDown);
+    window.addEventListener('mousemove',e=>{ if(downT) onMove(e); });
+    window.addEventListener('mouseup',e=>{ if(downT){ onUp(e); downT=0; } });
+  }
+
+  onTap(px,py){
+    // priority: minigame handled by its own button; placement drag handled separately
+    if(this.miniGame.active) return;
+    // build modes (floor/wall/edit) operate on grid taps
+    if(this.build.mode==='floor'||this.build.mode==='wall'||this.build.mode==='edit'){
+      const g=this.screenToGrid(px,py); this.build.worldTap(g.x,g.y); return;
+    }
+    if(this.build.mode==='placeItem'){
+      const g=this.screenToGrid(px,py); this.build.moveGhost(g.x,g.y); return;
+    }
+    // try catch a drifting item
+    const it=this.ocean.pick(px,py);
+    if(it){ this.startCatch(it); return; }
+    // otherwise walk player toward tapped cell if on raft
+    const g=this.screenToGrid(px,py);
+    if(this.raft.hasFloor(g.x,g.y) && !this.raft.occupied(g.x,g.y)){ this.player.moveTo(g.x,g.y); }
+  }
+  onLongPress(px,py){
+    // long press on furniture => quick info / start move
+    if(this.miniGame.active||this.build.mode!=='none') return;
+    const g=this.screenToGrid(px,py);
+    const f=this.pickFurniture(g.x,g.y);
+    if(f){ this.build.startMove(f); this.ui.toast('Перемести «'+this.items.get(f.key).name+'» и подтверди'); }
+  }
+
+  startCatch(driftItem){
+    this.ui.closeAllPanels();
+    // walk player toward nearest edge facing the item then catch
+    this.player.face = driftItem.x>this.view.cx?1:-1;
+    this.miniGame.start(driftItem);
+    this.ui.hint(false);
+  }
+
+  onCatchResult(result, key, driftRef){
+    const def=this.items.get(key);
+    this.ui.showCatchResult(result);
+    this.player.doCatch();
+    if(driftRef) {
+      const sx=driftRef.x, sy=driftRef.y;
+      this.ocean.addSpray(sx,sy, result==='miss'?6:16, result==='perfect'?'#ffe79a':'#dff3ff');
+      this.ocean.remove(driftRef);
+    }
+    if(result==='miss'){
+      this.spawnGainPx('Упустил…', this.view.cx, this.view.cy-60,'#ff9a8a');
+    } else {
+      this.inv.add(key,1);
+      let bonus=0;
+      if(result==='perfect'){ bonus=Math.ceil(def.wood*0.5); this.wood+=bonus; }
+      const msg = result==='perfect' ? (def.name+'! +'+bonus+'🪵') : ('Поймал: '+def.name);
+      this.spawnGainPx(msg, this.view.cx, this.view.cy-60, result==='perfect'?'#ffe79a':'#bfe9ff');
+      this.refreshHUD();
+      if(this.ui.openPanel==='inventory') this.ui.renderInventory();
+    }
+    setTimeout(()=>this.miniGame.stop(), 760);
+    this.save.save();
+  }
+
+  spawnGain(text,gx,gy,col){ const [sx,sy]=this.iso(gx,gy); this.spawnGainPx(text,sx,sy-30,col); }
+  spawnGainPx(text,sx,sy,col){
+    const fx=document.getElementById('fx');
+    const d=document.createElement('div'); d.className='gain'; d.textContent=text;
+    if(col) d.style.color=col;
+    d.style.left=sx+'px'; d.style.top=sy+'px'; d.style.transform='translate(-50%,0)';
+    fx.appendChild(d); setTimeout(()=>d.remove(),1100);
+  }
+
+  refreshHUD(){
+    document.getElementById('hudWood').textContent=Math.floor(this.wood);
+    document.getElementById('hudBeauty').textContent=this.raft.beauty;
+    document.getElementById('hudSize').textContent=this.raft.floors.size;
+    document.getElementById('hudLevel').textContent=this.raft.level;
+    document.getElementById('xpFill').style.width=(this.raft.xpProgress()*100)+'%';
+  }
+
+  loop(now){
+    let dt=(now-this.last)/1000; this.last=now;
+    if(dt>0.05) dt=0.05; // clamp big gaps
+    // fps meter
+    this._fpsAcc+=dt; this._fpsCnt++;
+    if(this._fpsAcc>=0.5){ this.fps=this._fpsCnt/this._fpsAcc; this._fpsAcc=0; this._fpsCnt=0; }
+
+    this.ocean.update(dt);
+    this.player.update(dt);
+    this.miniGame.update(dt);
+    this.save.update(dt);
+
+    // show hint when items drift and nothing open
+    if(!this.miniGame.active && this.build.mode==='none' && !this.ui.openPanel && this.ocean.driftItems.length>0 && !this._hintShownRecently){
+      // subtle: only show if user idle-ish (skip to avoid spam)
+    }
+
+    this.renderer.render(dt);
+    requestAnimationFrame(t=>this.loop(t));
+  }
+}
+
+/* boot */
+window.addEventListener('load',()=>{ window.GAME=new Game(); });
+</script>
+</body>
+</html>
