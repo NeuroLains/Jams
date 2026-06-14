@@ -130,6 +130,15 @@
   #catchBtn:active { transform:scale(.96); filter:brightness(1.1); }
   #catchResult { margin-top:10px; font-size:20px; font-weight:900; height:24px; }
 
+  /* mode banner */
+  #modeBanner { position:absolute; z-index:36; top:calc(env(safe-area-inset-top,0) + 64px); left:50%; transform:translate(-50%,-12px);
+    display:flex; align-items:center; gap:12px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+    background:linear-gradient(160deg,rgba(30,70,108,.96),rgba(18,46,72,.96)); border:1px solid rgba(120,190,240,.4);
+    border-radius:16px; padding:8px 10px 8px 16px; color:#eaf6ff; font-weight:700; font-size:13px; box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  #modeBanner.open { opacity:1; pointer-events:auto; transform:translate(-50%,0); }
+  .mbDone { background:linear-gradient(160deg,#3ea96b,#2c7d4e); color:#fff; padding:8px 14px; border-radius:12px; font-weight:800; }
+  .mbDone:active { filter:brightness(1.2); transform:scale(.95); }
+
   /* build action bar (when placing) */
   #buildActions { position:absolute; z-index:35; bottom:calc(env(safe-area-inset-bottom,0) + 66px); left:50%; transform:translate(-50%,30px);
     display:flex; gap:8px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
@@ -214,11 +223,6 @@
   <!-- BUILD PANEL -->
   <div class="panel" id="panel-build">
     <h2>СТРОИТЕЛЬСТВО <span class="x" data-close>✕</span></h2>
-    <div class="tabRow">
-      <div class="segBtn active" data-build="floor">Плот</div>
-      <div class="segBtn" data-build="wall">Стены</div>
-      <div class="segBtn" data-build="edit">Правка</div>
-    </div>
     <div class="buildRow" id="buildList"></div>
   </div>
 
@@ -240,6 +244,12 @@
     <div class="barTrack"><div class="barPerfect" id="barPerfect"></div><div class="needle" id="needle"></div></div>
     <div id="catchResult"></div>
     <button id="catchBtn">НАЖМИ!</button>
+  </div>
+
+  <!-- MODE BANNER (floor/wall/edit) -->
+  <div id="modeBanner">
+    <span id="modeText">Режим</span>
+    <div class="mbDone" id="mbDone">✓ Готово</div>
   </div>
 
   <!-- BUILD ACTION BAR -->
@@ -493,8 +503,11 @@ class Ocean {
     const side = randi(0,3);
     const W=g.view.w, H=g.view.h;
     let x,y,vx,vy;
-    const speed = rand(26,44);
-    const tx = W*0.5 + rand(-W*0.18,W*0.18), ty = H*0.5 + rand(-H*0.16,H*0.16);
+    const speed = rand(24,40);
+    // aim for a point on a ring around the raft so items glide past, not over the house
+    const rR = Math.sqrt(g.raft.floors.size)*38 + 70;
+    const ang = rand(0,TAU);
+    const tx = W*0.5 + Math.cos(ang)*rR, ty = H*0.5 + Math.sin(ang)*rR*0.62;
     if(side===0){ x=-80; y=rand(H*0.2,H*0.85); }
     else if(side===1){ x=W+80; y=rand(H*0.2,H*0.85); }
     else if(side===2){ x=rand(W*0.1,W*0.9); y=H*0.15; }
@@ -698,6 +711,7 @@ class BuildingSystem {
     this.wallCost=()=>14;
   }
   startPlaceItem(key){
+    this.game.ui.exitBuildMode();
     this.cancel();
     this.mode='placeItem';
     // place near player
@@ -708,6 +722,7 @@ class BuildingSystem {
     this.game.ui.closeAllPanels();
   }
   startMove(furn){
+    this.game.ui.exitBuildMode();
     this.cancel();
     this.mode='placeItem';
     this.ghost={ key:furn.key, x:furn.x, y:furn.y, rot:furn.rot, fromInv:false, moving:true, ref:furn };
@@ -726,7 +741,18 @@ class BuildingSystem {
     this.mode=m; // floor | wall | edit | none
   }
   rotate(){ if(this.ghost){ this.ghost.rot=(this.ghost.rot+1)&3; } }
-  moveGhost(x,y){ if(this.ghost){ this.ghost.x=x; this.ghost.y=y; } }
+  moveGhost(x,y){
+    if(!this.ghost) return;
+    const g=this.ghost; const ignore = g.moving? g.ref : null;
+    // if requested cell is invalid, try to snap to nearest valid cell within small radius
+    if(this.game.raft.canPlace(g.key,x,y,g.rot,ignore)){ g.x=x; g.y=y; return; }
+    let best=null, bd=99;
+    for(let r=1;r<=2;r++) for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
+      if(this.game.raft.canPlace(g.key,x+dx,y+dy,g.rot,ignore)){
+        const d=Math.abs(dx)+Math.abs(dy); if(d<bd){ bd=d; best={x:x+dx,y:y+dy}; } }
+    }
+    if(best){ g.x=best.x; g.y=best.y; } else { g.x=x; g.y=y; } // show red where finger is
+  }
   confirm(){
     if(this.mode!=='placeItem'||!this.ghost) return;
     const g=this.ghost; const ignore = g.moving? g.ref : null;
@@ -794,46 +820,47 @@ class Renderer {
   }
   render(dt){
     const ctx=this.ctx, g=this.game, V=g.view;
-    this.drawSky();
     this.drawWater(dt);
     this.drawFoam();
-    this.drawDriftItems();
     this.drawRaft();
+    this.drawDriftItems();    // ON TOP — never hidden under the raft
     this.drawSpray();
+    this.drawVignette();
     if(g.settings.fps) this.drawFps();
-  }
-
-  drawSky(){
-    const ctx=this.ctx, V=this.game.view;
-    const grad=ctx.createLinearGradient(0,0,0,V.h);
-    grad.addColorStop(0,'#2a86c4'); grad.addColorStop(0.5,'#1f6ea8'); grad.addColorStop(1,'#15527e');
-    ctx.fillStyle=grad; ctx.fillRect(0,0,V.w,V.h);
   }
 
   drawWater(dt){
     const ctx=this.ctx, V=this.game.view, t=this.game.ocean.t, q=this.game.settings.water;
-    // moving wave bands
-    const bands = q?14:7;
+    // deep vertical gradient (lighter at top horizon, deeper toward bottom)
+    const grad=ctx.createLinearGradient(0,0,0,V.h);
+    grad.addColorStop(0,'#3ba0d8'); grad.addColorStop(0.35,'#2a86c4');
+    grad.addColorStop(0.7,'#1c6298'); grad.addColorStop(1,'#123f63');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,V.w,V.h);
+
+    // radial brightening around the raft (sun pool)
+    const rg=ctx.createRadialGradient(V.cx,V.cy,40, V.cx,V.cy,Math.max(V.w,V.h)*0.6);
+    rg.addColorStop(0,'rgba(150,225,255,0.22)'); rg.addColorStop(1,'rgba(150,225,255,0)');
+    ctx.fillStyle=rg; ctx.fillRect(0,0,V.w,V.h);
+
+    // soft moving swell bands
+    const bands = q?13:7;
     for(let i=0;i<bands;i++){
-      const yy = (i/bands)*V.h;
-      const a = 0.05 + 0.05*Math.sin(t*0.8 + i*0.7);
-      ctx.fillStyle='rgba(120,200,255,'+a.toFixed(3)+')';
-      ctx.beginPath();
-      ctx.moveTo(0,yy);
-      const amp= q?8:4;
-      for(let x=0;x<=V.w;x+=q?40:80){
-        ctx.lineTo(x, yy + Math.sin(x*0.015 + t*1.4 + i)*amp);
-      }
-      ctx.lineTo(V.w,yy+18); ctx.lineTo(0,yy+18); ctx.closePath(); ctx.fill();
+      const yy=(i/bands)*V.h;
+      const a=0.05+0.045*Math.sin(t*0.7+i*0.7);
+      ctx.fillStyle='rgba(160,220,255,'+a.toFixed(3)+')';
+      ctx.beginPath(); ctx.moveTo(0,yy);
+      const amp=q?9:5, step=q?44:90;
+      for(let x=0;x<=V.w;x+=step) ctx.lineTo(x, yy+Math.sin(x*0.013+t*1.2+i)*amp);
+      ctx.lineTo(V.w,yy+22); ctx.lineTo(0,yy+22); ctx.closePath(); ctx.fill();
     }
-    // sun glints
+    // shimmering caustic sparkles
     if(q){
-      ctx.fillStyle='rgba(255,255,255,0.10)';
-      for(let i=0;i<26;i++){
-        const x=(i*97.3 + Math.sin(t*0.5+i)*30)%V.w;
-        const y=(i*53.7 + t*8)%V.h;
-        const s=1+ (Math.sin(t*2+i)*0.5+0.5)*2.4;
-        ctx.fillRect(x,y,s,s);
+      for(let i=0;i<34;i++){
+        const x=(i*97.3+Math.sin(t*0.6+i)*40)%V.w;
+        const y=(i*61.7+t*10)%V.h;
+        const tw=(Math.sin(t*3+i*1.7)*0.5+0.5);
+        ctx.fillStyle='rgba(220,245,255,'+(0.05+tw*0.18).toFixed(3)+')';
+        const s=1+tw*2.6; ctx.fillRect(x,y,s,s);
       }
     }
   }
@@ -842,39 +869,49 @@ class Renderer {
     const ctx=this.ctx, V=this.game.view;
     for(const f of this.game.ocean.foam){
       const x=f.x*V.w, y=f.y*V.h;
-      const a=0.12+0.1*Math.sin(f.ph);
+      const a=0.10+0.09*Math.sin(f.ph);
       ctx.fillStyle='rgba(255,255,255,'+a.toFixed(3)+')';
-      ctx.beginPath(); ctx.ellipse(x,y,f.s*7,f.s*3,0,0,TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x,y,f.s*8,f.s*3,0,0,TAU); ctx.fill();
     }
   }
 
+  drawVignette(){
+    const ctx=this.ctx, V=this.game.view;
+    const g=ctx.createRadialGradient(V.cx,V.h*0.5,V.h*0.3, V.cx,V.h*0.5,V.h*0.85);
+    g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(5,20,35,0.38)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,V.w,V.h);
+  }
+
   drawDriftItems(){
-    const ctx=this.ctx, g=this.game;
+    const ctx=this.ctx, g=this.game, t=g.ocean.t;
     for(const it of g.ocean.driftItems){
       const def=g.items.get(it.key);
       const by=Math.sin(it.bob)*4;
+      // expanding water ripple around the float (drawn at water level, not bobbing)
+      const rp=(t*0.6+it.bob)%1;
+      ctx.strokeStyle='rgba(220,245,255,'+(0.4*(1-rp)).toFixed(3)+')'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.ellipse(it.x,it.y+22, 24+rp*22, 10+rp*9, 0,0,TAU); ctx.stroke();
+
       ctx.save();
       ctx.translate(it.x, it.y+by);
-      // little wooden float under it
-      ctx.save();
-      ctx.globalAlpha=0.3; ctx.fillStyle='#0a2f4a';
-      ctx.beginPath(); ctx.ellipse(0,18,30,12,0,0,TAU); ctx.fill();
-      ctx.restore();
-      // raft plank
-      ctx.fillStyle='#a9743f'; ctx.beginPath();
-      ctx.moveTo(0,8); ctx.lineTo(28,18); ctx.lineTo(0,28); ctx.lineTo(-28,18); ctx.closePath(); ctx.fill();
+      // shadow in water
+      ctx.save(); ctx.globalAlpha=0.28; ctx.fillStyle='#072438';
+      ctx.beginPath(); ctx.ellipse(0,20,30,12,0,0,TAU); ctx.fill(); ctx.restore();
+      // wooden float (diamond plank with thickness)
+      ctx.fillStyle='#b07d44'; ctx.beginPath();
+      ctx.moveTo(0,6); ctx.lineTo(30,20); ctx.lineTo(0,30); ctx.lineTo(-30,20); ctx.closePath(); ctx.fill();
       ctx.fillStyle='#8a5b2e'; ctx.beginPath();
-      ctx.moveTo(28,18); ctx.lineTo(0,28); ctx.lineTo(0,32); ctx.lineTo(28,22); ctx.closePath(); ctx.fill();
-      const sc=it.scale*0.9;
-      ctx.scale(sc,sc);
-      g.items._draw(ctx, def, 44, 0, 1);
-      // rarity glow ring
+      ctx.moveTo(30,20); ctx.lineTo(0,30); ctx.lineTo(0,34); ctx.lineTo(30,24); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#6f4622'; ctx.beginPath();
+      ctx.moveTo(-30,20); ctx.lineTo(0,30); ctx.lineTo(0,34); ctx.lineTo(-30,24); ctx.closePath(); ctx.fill();
+      // rarity glow ring (pulse to invite tapping)
       if(def.rarity!=='common'){
-        ctx.globalAlpha=0.5+0.3*Math.sin(g.ocean.t*4);
-        ctx.strokeStyle=RARITY[def.rarity].glow; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.ellipse(0,18,34,15,0,0,TAU); ctx.stroke();
-        ctx.globalAlpha=1;
+        const pulse=0.45+0.35*Math.sin(t*4+it.bob);
+        ctx.globalAlpha=pulse; ctx.strokeStyle=RARITY[def.rarity].glow; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.ellipse(0,18,36,16,0,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
       }
+      const sc=it.scale*0.95; ctx.scale(sc,sc);
+      g.items._draw(ctx, def, 46, 0, 1);
       ctx.restore();
     }
   }
@@ -902,10 +939,31 @@ class Renderer {
     const g=this.game, ctx=this.ctx, B=g.build;
     // reflection / shadow blob under raft
     const cells=[...g.raft.floors].map(k=>k.split(',').map(Number));
-    // soft shadow
-    ctx.save(); ctx.globalAlpha=0.18; ctx.fillStyle='#04263d';
+    const hw=this.TW/2, hh=this.TH/2, t=g.ocean.t;
+    // soft shadow under the raft
+    ctx.save(); ctx.globalAlpha=0.20; ctx.fillStyle='#03253b';
     for(const [x,y] of cells){ const [sx,sy]=this.iso(x,y);
-      ctx.beginPath(); ctx.ellipse(sx,sy+14,this.TW*0.55,this.TH*0.7,0,0,TAU); ctx.fill(); }
+      ctx.beginPath(); ctx.ellipse(sx,sy+16,this.TW*0.6,this.TH*0.8,0,0,TAU); ctx.fill(); }
+    ctx.restore();
+
+    // animated foam lapping around the water-facing edges
+    const has=(x,y)=>g.raft.floors.has(x+','+y);
+    ctx.save(); ctx.lineCap='round';
+    for(const [x,y] of cells){ const [sx,sy]=this.iso(x,y);
+      const top=[sx,sy-hh], right=[sx+hw,sy], bot=[sx,sy+hh], left=[sx-hw,sy];
+      const edges=[];
+      if(!has(x,y-1)) edges.push([top,right,1,-0.4]);
+      if(!has(x+1,y)) edges.push([right,bot,1,0.4]);
+      if(!has(x,y+1)) edges.push([bot,left,-1,0.4]);
+      if(!has(x-1,y)) edges.push([left,top,-1,-0.4]);
+      for(const [a,b,ox,oy] of edges){
+        const w=2.6+Math.sin(t*3+x*1.3+y*0.7)*1.1;
+        ctx.strokeStyle='rgba(236,250,255,0.85)'; ctx.lineWidth=w;
+        ctx.beginPath(); ctx.moveTo(a[0]+ox*2,a[1]+oy*2); ctx.lineTo(b[0]+ox*2,b[1]+oy*2); ctx.stroke();
+        ctx.strokeStyle='rgba(190,235,255,0.5)'; ctx.lineWidth=w+3;
+        ctx.beginPath(); ctx.moveTo(a[0]+ox*4,a[1]+oy*4); ctx.lineTo(b[0]+ox*4,b[1]+oy*4); ctx.stroke();
+      }
+    }
     ctx.restore();
 
     // sort all drawables by depth (gx+gy), furniture too
@@ -938,12 +996,16 @@ class Renderer {
       if(o.type==='floor'){
         // plank colors with subtle per-tile variation
         const v=((o.x*7+o.y*13)%3);
-        const top = v===0?'#c08a4e': v===1?'#b67f44':'#bd8649';
+        const top = v===0?'#c8945a': v===1?'#bd8a4f':'#c28f54';
         this.drawTileTop(o.x,o.y, top,'#8a5b2e','#6f4622',0);
-        // plank lines
-        const [sx,sy]=this.iso(o.x,o.y);
-        ctx.strokeStyle='rgba(90,60,30,.35)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(sx-this.TW/2,sy); ctx.lineTo(sx,sy+this.TH/2); ctx.stroke();
+        const [sx,sy]=this.iso(o.x,o.y), hw=this.TW/2, hh=this.TH/2;
+        // plank seam
+        ctx.strokeStyle='rgba(90,60,30,.30)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(sx-hw,sy); ctx.lineTo(sx,sy+hh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx,sy-hh); ctx.lineTo(sx+hw,sy); ctx.stroke();
+        // top highlight edge (sun from upper-left)
+        ctx.strokeStyle='rgba(255,238,200,.45)'; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(sx-hw,sy); ctx.lineTo(sx,sy-hh); ctx.lineTo(sx+hw,sy); ctx.stroke();
       } else if(o.type==='wall'){
         this.drawTileTop(o.x,o.y,'#caa15f','#8a5b2e','#6f4622',0);
         // wall posts
@@ -990,9 +1052,11 @@ class Renderer {
     // shadow
     ctx.globalAlpha=0.25; ctx.fillStyle='#04263d';
     ctx.beginPath(); ctx.ellipse(0,4,13,6,0,0,TAU); ctx.fill(); ctx.globalAlpha=1;
-    // body (rounded)
+    // body (rounded) with subtle highlight
     ctx.fillStyle='#4f9bd6';
     this._roundBody(ctx,-9,-26,18,22,8);
+    ctx.fillStyle='rgba(255,255,255,.18)';
+    this._roundBody(ctx,-7,-24,7,18,6);
     // arms
     ctx.fillStyle='#3b7fb6';
     ctx.save(); ctx.translate(f*9,-22); ctx.rotate(armSwing*f); ctx.fillRect(-3,0,5,12); ctx.restore();
@@ -1116,13 +1180,8 @@ class UI {
         this.panels.inventory.querySelectorAll('[data-filter]').forEach(o=>o.classList.toggle('active',o===s));
         this.renderInventory(); });
     });
-    // build tabs
-    this.panels.build.querySelectorAll('[data-build]').forEach(s=>{
-      s.addEventListener('click',()=>{ this.buildTab=s.dataset.build;
-        this.panels.build.querySelectorAll('[data-build]').forEach(o=>o.classList.toggle('active',o===s));
-        g.build.setMode(this.buildTab==='floor'?'floor':this.buildTab==='wall'?'wall':'edit');
-        this.renderBuildList(); });
-    });
+    // mode banner done
+    document.getElementById('mbDone').addEventListener('click',()=>this.exitBuildMode());
 
     // catch button
     document.getElementById('catchBtn').addEventListener('click',()=>g.miniGame.tap());
@@ -1151,12 +1210,15 @@ class UI {
 
   togglePanel(name){
     if(this.openPanel===name){ this.closeAllPanels(); return; }
+    // leaving any active canvas build/placement mode when opening a menu
+    this.exitBuildMode(true);
+    this.game.build.cancel();
     this.closeAllPanels(true);
     this.openPanel=name; this.panels[name].classList.add('open');
     document.getElementById('scrim').classList.add('show');
     document.querySelectorAll('.tabBtn').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));
     if(name==='inventory') this.renderInventory();
-    if(name==='build'){ this.game.build.setMode(this.buildTab==='floor'?'floor':this.buildTab==='wall'?'wall':'edit'); this.renderBuildList(); }
+    if(name==='build') this.renderBuildList();
     if(name==='settings') this.syncSettings();
   }
   closeAllPanels(keepScrim){
@@ -1164,7 +1226,23 @@ class UI {
     this.openPanel=null;
     if(!keepScrim) document.getElementById('scrim').classList.remove('show');
     document.querySelectorAll('.tabBtn').forEach(b=>b.classList.remove('active'));
-    if(this.game.build.mode!=='placeItem') this.game.build.setMode('none');
+  }
+
+  /* enter a canvas-interaction build mode (floor/wall/edit): close menus so taps reach the world */
+  enterBuildMode(mode){
+    this.closeAllPanels(false);            // remove scrim → canvas tappable
+    this.game.build.cancel();
+    this.game.build.setMode(mode);
+    const labels={ floor:'🪵 Расширение плота — нажми зелёные клетки на воде',
+                   wall:'🧱 Стены — нажми на клетку плота',
+                   edit:'✏️ Правка — нажми мебель, чтобы переместить; стену — чтобы убрать' };
+    document.getElementById('modeText').textContent=labels[mode]||mode;
+    document.getElementById('modeBanner').classList.add('open');
+  }
+  exitBuildMode(silent){
+    document.getElementById('modeBanner').classList.remove('open');
+    const m=this.game.build.mode;
+    if(m==='floor'||m==='wall'||m==='edit') this.game.build.setMode('none');
   }
 
   /* ---------- inventory rendering ---------- */
@@ -1199,35 +1277,32 @@ class UI {
       this.toast('♻️ Переработано: +'+w+' 🪵'); g.save.save(); }
   }
 
-  /* ---------- build list ---------- */
+  /* ---------- build list (action cards) ---------- */
   renderBuildList(){
     const g=this.game, list=document.getElementById('buildList'); list.innerHTML='';
-    if(this.buildTab==='floor'){
-      const cost=g.build.floorCost();
-      list.appendChild(this._buildCard('🪵 Клетка плота','Расширь свою базу на 1 клетку. Нажми на подсвеченную область у края плота.',cost,()=>{}));
-      this._note(list,'Текущий размер плота: '+g.raft.floors.size+' клеток. Нажми зелёную клетку на воде, чтобы построить.');
-    } else if(this.buildTab==='wall'){
-      const cost=g.build.wallCost();
-      list.appendChild(this._buildCard('🧱 Стена','Декоративная стена по краю. Добавляет красоту. Нажми на клетку плота.',cost,()=>{}));
-      this._note(list,'Стены добавляют +2 ⭐ каждая.');
-    } else {
-      this._note(list,'Режим правки: нажми на мебель, чтобы переместить её. Нажми на стену, чтобы убрать (вернётся часть 🪵).');
-    }
+    list.appendChild(this._buildCard('floor','🪵 Расширить плот',
+      'Размер: '+g.raft.floors.size+' клеток. Добавь клетку у края.', g.build.floorCost()+' 🪵'));
+    list.appendChild(this._buildCard('wall','🧱 Поставить стену',
+      'Декоративный борт. +2 ⭐ за каждую.', g.build.wallCost()+' 🪵'));
+    list.appendChild(this._buildCard('edit','✏️ Править / двигать',
+      'Перемести мебель или убери стену.', 'Открыть'));
+    this._note(list,'Совет: окно закроется, и ты сможешь строить прямо на воде. Нажми «Готово», когда закончишь.');
   }
-  _buildCard(title,desc,cost,cb){
+  _buildCard(mode,title,desc,badge){
     const g=this.game;
     const row=document.createElement('div'); row.className='bItem';
     const cnv=document.createElement('canvas'); cnv.className='cnv'; cnv.width=64;cnv.height=64;
     const cx=cnv.getContext('2d');
-    // small preview tile
-    cx.fillStyle='#c08a4e'; cx.beginPath(); cx.moveTo(32,12);cx.lineTo(56,28);cx.lineTo(32,44);cx.lineTo(8,28);cx.closePath();cx.fill();
-    cx.fillStyle='#8a5b2e'; cx.beginPath(); cx.moveTo(8,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(8,36);cx.closePath();cx.fill();
-    cx.fillStyle='#6f4622'; cx.beginPath(); cx.moveTo(56,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(56,36);cx.closePath();cx.fill();
+    if(mode==='wall'){ cx.fillStyle='#caa15f'; cx.fillRect(20,8,8,40); cx.fillRect(36,8,8,40); cx.fillStyle='#9c6c38'; cx.fillRect(16,8,32,6); }
+    else if(mode==='edit'){ cx.font='40px serif'; cx.textAlign='center'; cx.fillText('✏️',32,46); }
+    else { cx.fillStyle='#c08a4e'; cx.beginPath(); cx.moveTo(32,12);cx.lineTo(56,28);cx.lineTo(32,44);cx.lineTo(8,28);cx.closePath();cx.fill();
+      cx.fillStyle='#8a5b2e'; cx.beginPath(); cx.moveTo(8,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(8,36);cx.closePath();cx.fill();
+      cx.fillStyle='#6f4622'; cx.beginPath(); cx.moveTo(56,28);cx.lineTo(32,44);cx.lineTo(32,52);cx.lineTo(56,36);cx.closePath();cx.fill(); }
     row.appendChild(cnv);
     const info=document.createElement('div'); info.className='info';
     info.innerHTML='<b>'+title+'</b><small>'+desc+'</small>'; row.appendChild(info);
-    const btn=document.createElement('div'); btn.className='costBtn'+(g.wood<cost?' disabled':'');
-    btn.innerHTML=cost+' 🪵'; row.appendChild(btn);
+    const btn=document.createElement('div'); btn.className='costBtn'; btn.innerHTML=badge; row.appendChild(btn);
+    row.addEventListener('click',()=>this.enterBuildMode(mode));
     return row;
   }
   _note(list,txt){ const n=document.createElement('div'); n.style.cssText='font-size:12px;color:#9cc3df;text-align:center;padding:8px'; n.textContent=txt; list.appendChild(n); }
