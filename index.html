@@ -526,11 +526,30 @@ class Ocean {
       this.spawn();
       this.spawnTimer = rand(1.6, 3.4);
     }
+    // compute the raft's on-screen "keep-out" ellipse so items glide around it (never under/over)
+    let kx=g.view.cx, ky=g.view.cy, RX=80, RY=60;
+    if(g.raft.floors.size){
+      let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+      for(const k of g.raft.floors){ const c=k.split(','); const [sx,sy]=g.renderer.iso(+c[0],+c[1]);
+        if(sx<mnx)mnx=sx; if(sx>mxx)mxx=sx; if(sy<mny)mny=sy; if(sy>mxy)mxy=sy; }
+      kx=(mnx+mxx)/2; ky=(mny+mxy)/2;
+      RX=(mxx-mnx)/2 + g.renderer.TW*0.85;
+      RY=(mxy-mny)/2 + g.renderer.TH*1.4;
+    }
+
     const W=g.view.w, H=g.view.h, m=130;
     for(let i=this.driftItems.length-1;i>=0;i--){
       const it=this.driftItems[i];
       it.x += it.vx*dt; it.y += it.vy*dt; it.bob += dt*2; it.life+=dt;
       it.scale = lerp(it.scale, 1, dt*4);
+      // keep outside the raft ellipse, sliding tangentially around it
+      const ex=(it.x-kx)/RX, ey=(it.y-ky)/RY, d=Math.hypot(ex,ey);
+      if(d<1 && d>1e-4){
+        it.x = kx + (ex/d)*RX; it.y = ky + (ey/d)*RY;
+        const ux=(ex/d)/RX, uy=(ey/d)/RY, ul=Math.hypot(ux,uy)||1;
+        const nx=ux/ul, ny=uy/ul, dot=it.vx*nx+it.vy*ny;
+        if(dot<0){ it.vx-=nx*dot; it.vy-=ny*dot; }
+      }
       if(it.x<-m||it.x>W+m||it.y<-m||it.y>H+m){ this.driftItems.splice(i,1); }
     }
     // foam drift
@@ -741,21 +760,8 @@ class BuildingSystem {
     this.mode=m; // floor | wall | edit | none
   }
   rotate(){ if(this.ghost){ this.ghost.rot=(this.ghost.rot+1)&3; } }
-  moveGhost(x,y){
-    if(!this.ghost) return;
-    const g=this.ghost; const ignore = g.moving? g.ref : null;
-    if(this.game.raft.canPlace(g.key,x,y,g.rot,ignore)){ g.x=x; g.y=y; return; }
-    // snap to the nearest valid origin cell anywhere on the raft → ghost stays placeable
-    let best=null, bd=Infinity;
-    for(const k of this.game.raft.floors){
-      const c=k.split(','); const fx=+c[0], fy=+c[1];
-      if(this.game.raft.canPlace(g.key,fx,fy,g.rot,ignore)){
-        const d=(fx-x)*(fx-x)+(fy-y)*(fy-y);
-        if(d<bd){ bd=d; best={x:fx,y:fy}; }
-      }
-    }
-    if(best){ g.x=best.x; g.y=best.y; } else { g.x=x; g.y=y; } // nowhere valid → show red
-  }
+  // place the ghost exactly on the tapped cell — green if valid, red if not (no auto-snapping)
+  moveGhost(x,y){ if(this.ghost){ this.ghost.x=x; this.ghost.y=y; } }
   confirm(){
     if(this.mode!=='placeItem'||!this.ghost) return;
     const g=this.ghost; const ignore = g.moving? g.ref : null;
@@ -825,8 +831,8 @@ class Renderer {
     const ctx=this.ctx, g=this.game, V=g.view;
     this.drawWater(dt);
     this.drawFoam();
+    this.drawDriftItems();    // in the water, behind the raft
     this.drawRaft();
-    this.drawDriftItems();    // ON TOP — never hidden under the raft
     this.drawSpray();
     this.drawVignette();
     if(g.settings.fps) this.drawFps();
@@ -938,25 +944,33 @@ class Renderer {
     ctx.moveTo(sx,Y-hh); ctx.lineTo(sx+hw,Y); ctx.lineTo(sx,Y+hh); ctx.lineTo(sx-hw,Y); ctx.closePath(); ctx.fill();
   }
 
-  // a solid chunky wooden wall segment filling the cell (reads as a wall when lined up)
-  drawWallBox(gx,gy){
-    const ctx=this.ctx; const [sx,sy]=this.iso(gx,gy);
-    const hw=this.TW/2, hh=this.TH/2, H=34;
-    // left face (SW)
-    ctx.fillStyle='#9c6c38'; ctx.beginPath();
-    ctx.moveTo(sx-hw,sy); ctx.lineTo(sx,sy+hh); ctx.lineTo(sx,sy+hh-H); ctx.lineTo(sx-hw,sy-H); ctx.closePath(); ctx.fill();
-    // right face (SE)
-    ctx.fillStyle='#7c5226'; ctx.beginPath();
-    ctx.moveTo(sx,sy+hh); ctx.lineTo(sx+hw,sy); ctx.lineTo(sx+hw,sy-H); ctx.lineTo(sx,sy+hh-H); ctx.closePath(); ctx.fill();
-    // plank seams on faces
-    ctx.strokeStyle='rgba(70,46,22,.4)'; ctx.lineWidth=1;
-    for(let i=1;i<3;i++){ const yy=sy-H+i*(H/3);
-      ctx.beginPath(); ctx.moveTo(sx-hw,yy); ctx.lineTo(sx,yy+hh); ctx.lineTo(sx+hw,yy); ctx.stroke(); }
-    // top rail (raised diamond)
-    ctx.fillStyle='#caa15f'; ctx.beginPath();
-    ctx.moveTo(sx,sy-hh-H); ctx.lineTo(sx+hw,sy-H); ctx.lineTo(sx,sy+hh-H); ctx.lineTo(sx-hw,sy-H); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle='rgba(255,238,200,.4)'; ctx.lineWidth=1.4;
-    ctx.beginPath(); ctx.moveTo(sx-hw,sy-H); ctx.lineTo(sx,sy-hh-H); ctx.lineTo(sx+hw,sy-H); ctx.stroke();
+  // thin wooden wall panels standing on the cell's water-facing edges (forms a neat
+  // continuous wall along the deck edge instead of a fat cube)
+  drawWall(gx,gy){
+    const ctx=this.ctx, has=(x,y)=>this.game.raft.floors.has(x+','+y);
+    const [sx,sy]=this.iso(gx,gy); const hw=this.TW/2, hh=this.TH/2, H=22;
+    const top=[sx,sy-hh], right=[sx+hw,sy], bot=[sx,sy+hh], left=[sx-hw,sy];
+    // each edge: [vertexA, vertexB, faceColor] — drawn only where it faces water
+    const edges=[];
+    if(!has(gx,gy-1)) edges.push([top,right,'#b9824a']);   // NE
+    if(!has(gx+1,gy)) edges.push([right,bot,'#9c6c38']);   // SE
+    if(!has(gx,gy+1)) edges.push([bot,left,'#9c6c38']);    // SW
+    if(!has(gx-1,gy)) edges.push([left,top,'#b9824a']);    // NW
+    if(edges.length===0){ // interior wall: a single slim panel across the cell
+      edges.push([left,right,'#a9743f']);
+    }
+    // draw farther edges first (higher on screen) for correct overlap
+    edges.sort((a,b)=> (a[0][1]+a[1][1]) - (b[0][1]+b[1][1]));
+    for(const [a,b,col] of edges){
+      // thin standing panel (a flat quad along the edge, raised by H)
+      ctx.fillStyle=col; ctx.beginPath();
+      ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.lineTo(b[0],b[1]-H); ctx.lineTo(a[0],a[1]-H); ctx.closePath(); ctx.fill();
+      // plank seam + top rail highlight
+      ctx.strokeStyle='rgba(70,46,22,.35)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]-H*0.5); ctx.lineTo(b[0],b[1]-H*0.5); ctx.stroke();
+      ctx.fillStyle='#caa15f'; ctx.beginPath();
+      ctx.moveTo(a[0],a[1]-H); ctx.lineTo(b[0],b[1]-H); ctx.lineTo(b[0],b[1]-H-3); ctx.lineTo(a[0],a[1]-H-3); ctx.closePath(); ctx.fill();
+    }
   }
 
   drawRaft(){
@@ -1032,7 +1046,7 @@ class Renderer {
         ctx.beginPath(); ctx.moveTo(sx-hw,sy); ctx.lineTo(sx,sy-hh); ctx.lineTo(sx+hw,sy); ctx.stroke();
       } else if(o.type==='wall'){
         this.drawTileTop(o.x,o.y,'#c8945a','#8a5b2e','#6f4622',0); // floor under wall
-        this.drawWallBox(o.x,o.y);
+        this.drawWall(o.x,o.y);
       } else if(o.type==='furn'){
         const [sx,sy]=this.iso(o.x,o.y);
         ctx.save(); ctx.translate(sx, sy);
